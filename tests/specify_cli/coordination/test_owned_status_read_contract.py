@@ -11,6 +11,7 @@ from mission_runtime import ActionContextError
 from specify_cli.coordination.status_service import (
     EventLogReadContract,
     StatusContractError,
+    StatusReadSource,
     read_event_log,
     read_event_stream_log,
 )
@@ -52,6 +53,10 @@ def test_owned_contract_validates_root_and_mission(checkouts, reader):
     mission = owned / "kitty-specs" / SLUG
     contract = EventLogReadContract.owned_checkout(mission, repo_root=primary, owned_root=owned)
     reader(contract)
+    with pytest.raises(StatusContractError, match="require primary and owned roots"):
+        reader(EventLogReadContract(source=StatusReadSource.OWNED_CHECKOUT, feature_dir=mission))
+    with pytest.raises(StatusContractError, match="mission directory does not match"):
+        reader(EventLogReadContract.owned_checkout(primary / "kitty-specs" / SLUG, repo_root=primary, owned_root=owned))
     for wrong_root in (sibling, owned / ".worktrees" / "unregistered"):
         with pytest.raises((ActionContextError, StatusContractError)):
             reader(EventLogReadContract.owned_checkout(mission, repo_root=primary, owned_root=wrong_root))
