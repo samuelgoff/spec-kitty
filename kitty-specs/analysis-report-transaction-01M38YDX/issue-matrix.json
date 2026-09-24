@@ -1,0 +1,17 @@
+{
+  "rows": {
+    "#4888": {
+      "evidence_ref": "Existing canonical safe_commit uses git commit --only; owning Git/recorder qualification 203 passed, 2 skipped; PR https://github.com/spec-kitty/spec-kitty/pull/5017",
+      "fr": null,
+      "nfr": null,
+      "repo": null,
+      "sc": null,
+      "scope": "Existing dependency, reused without reimplementation",
+      "source_file": null,
+      "title": "Preserve unrelated staging through canonical commit",
+      "verdict": "verified-already-fixed",
+      "wp": "WP01"
+    }
+  },
+  "schema_version": 1
+}
