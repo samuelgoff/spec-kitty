@@ -273,3 +273,25 @@ def test_repeated_qualified_analysis_is_unchanged(repo: Path):
     assert (repo / REPORT).read_bytes() == report
     assert git(repo, "ls-files", "--stage", "-v", "-z") == index
     assert (repo / "application.txt").read_text() == "staged\nworking\n"
+
+
+@pytest.mark.parametrize("change", ["analyzer", "body", "receipt"])
+def test_unchanged_requires_same_semantics_and_existing_qualification(repo: Path, change: str):
+    from specify_cli.analysis_report import check_analysis_report_current
+
+    first = invoke("--report-only")
+    assert first.exit_code == 0, first.output
+    head = git(repo, "rev-parse", "HEAD")
+    if change == "receipt":
+        for path in (repo / ".git/spec-kitty-report-transactions").glob("*.json"):
+            path.unlink()
+        assert not check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok
+    args = ["record-analysis", "--mission", SLUG, "--report-only", "--json"]
+    if change == "analyzer":
+        args.extend(["--agent", "different-analyzer"])
+    body = BODY.replace("No findings.", "Revised analysis.") if change == "body" else BODY
+    repeated = CliRunner().invoke(app, args, input=body)
+    assert repeated.exit_code == 0, repeated.output
+    assert json.loads(repeated.output)["commit_status"] == "committed"
+    assert git(repo, "rev-parse", "HEAD") != head
+    assert check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok

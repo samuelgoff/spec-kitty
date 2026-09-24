@@ -457,7 +457,7 @@ def _frontmatter_text(frontmatter: dict[str, Any]) -> str:
     return stream.getvalue()
 
 
-def write_analysis_report(
+def render_analysis_report(
     *,
     feature_dir: Path,
     repo_root: Path,
@@ -465,8 +465,8 @@ def write_analysis_report(
     analyzer_agent: str | None = None,
     material_inputs: dict[str, dict[str, str | None]] | None = None,
     transaction_id: str | None = None,
-) -> AnalysisReportResult:
-    """Persist `analysis-report.md` with source-artifact hashes."""
+) -> tuple[AnalysisReportResult, str]:
+    """Render a report and its result without writing its destination."""
 
     for required in _hash_inputs():
         required_path = feature_dir / required
@@ -513,8 +513,7 @@ def write_analysis_report(
     normalized_body = report_body if report_body.endswith("\n") else report_body + "\n"
     content = f"---\n{_frontmatter_text(frontmatter)}---\n\n{normalized_body}"
     path = feature_dir / ANALYSIS_REPORT_FILENAME
-    atomic_write(path, content)
-    return AnalysisReportResult(
+    result = AnalysisReportResult(
         path=path,
         mission_slug=identity.mission_slug,
         mission_id=identity.mission_id,
@@ -524,6 +523,37 @@ def write_analysis_report(
         findings=findings,
         content_sha256=_sha256_text(content),
     )
+    return result, content
+
+
+def write_analysis_report(
+    *,
+    feature_dir: Path,
+    repo_root: Path,
+    body: str,
+    analyzer_agent: str | None = None,
+    material_inputs: dict[str, dict[str, str | None]] | None = None,
+    transaction_id: str | None = None,
+) -> AnalysisReportResult:
+    """Persist `analysis-report.md` using the canonical report renderer."""
+    result, content = render_analysis_report(
+        feature_dir=feature_dir,
+        repo_root=repo_root,
+        body=body,
+        analyzer_agent=analyzer_agent,
+        material_inputs=material_inputs,
+        transaction_id=transaction_id,
+    )
+    atomic_write(result.path, content)
+    return result
+
+
+def report_semantics(content: str) -> tuple[dict[str, Any], str] | None:
+    """Compare reports without generation time and transaction identity churn."""
+    metadata, body = _split_carrier(content)
+    if metadata is None:
+        return None
+    return ({key: value for key, value in metadata.items() if key not in {"generated_at", "report_transaction"}}, body)
 
 
 def check_analysis_report_current(feature_dir: Path, repo_root: Path) -> AnalysisFreshness:

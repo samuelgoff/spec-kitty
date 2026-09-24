@@ -32,7 +32,11 @@ bookkeeping are excluded. Symlinks and external mutable org roots are refused.
 ## Outcomes and recovery
 
 The JSON response distinguishes `failed_before_write`, `written_uncommitted`,
-`committed_unqualified`, and `committed`. A disk write alone is never success.
+`committed_unqualified`, `committed`, and `unchanged`. Identical semantic report
+content, analyzer and current inputs reuse an already-qualified report without
+changing its bytes or HEAD. Missing or pending receipts cannot qualify that
+no-op; fresh analysis must produce and verify a new report commit instead.
+A disk write alone is never success.
 Pre/post checks compare HEAD, material inputs, unrelated index entries, dirty
 working bytes, report bytes, commit parent and changed paths. These checks detect
 cooperative-writer races; they cannot lock out arbitrary external editors.

@@ -16,7 +16,15 @@ from uuid import uuid4
 from mission_runtime import MissionArtifactKind, placement_seam
 
 from specify_cli.analysis_inputs import collect_material_inputs
-from specify_cli.analysis_report import ANALYSIS_REPORT_FILENAME, _sha256_file, parse_structured_findings, write_analysis_report
+from specify_cli.analysis_report import (
+    ANALYSIS_REPORT_FILENAME,
+    _sha256_file,
+    _split_carrier,
+    parse_structured_findings,
+    render_analysis_report,
+    report_semantics,
+    write_analysis_report,
+)
 from specify_cli.coordination.commit_router import commit_for_mission
 from specify_cli.core.atomic import atomic_write
 from specify_cli.git.commit_helpers import preflight_commit
@@ -106,6 +114,16 @@ def _require_idle(root: Path) -> None:
             raise ValueError(f"Active Git operation: {name}")
 
 
+def _matching_qualified_report(root: Path, report: Path, rendered: str) -> str | None:
+    if not report.is_file():
+        return None
+    existing = report.read_text(encoding="utf-8")
+    metadata, _ = _split_carrier(existing)
+    if metadata is None or not report_is_qualified(root, report, metadata.get("report_transaction")):
+        return None
+    return existing if report_semantics(existing) == report_semantics(rendered) else None
+
+
 def record_report_transaction(*, repo_root: Path, feature_dir: Path, body: str, analyzer_agent: str | None, target_branch: str) -> dict[str, object]:
     """Record only the report; never reset or restore concurrent operator state."""
     report = feature_dir / ANALYSIS_REPORT_FILENAME
@@ -138,6 +156,25 @@ def record_report_transaction(*, repo_root: Path, feature_dir: Path, body: str, 
         head = _git(repo_root, "rev-parse", "HEAD").strip()
         index = _index(repo_root, relative)
         working = _working(repo_root, relative)
+        preview, rendered = render_analysis_report(
+            feature_dir=feature_dir,
+            repo_root=repo_root,
+            body=body,
+            analyzer_agent=analyzer_agent,
+            material_inputs=inputs,
+            transaction_id=token,
+        )
+        existing = _matching_qualified_report(repo_root, report, rendered)
+        if existing is not None:
+            if (
+                _git(repo_root, "rev-parse", "HEAD").strip() != head
+                or _index(repo_root, relative) != index
+                or _working(repo_root, relative) != working
+                or collect_material_inputs(feature_dir, repo_root) != inputs
+                or report.read_text(encoding="utf-8") != existing
+            ):
+                raise ValueError("Repository changed during unchanged-report verification")
+            return {**preview.to_dict(), "success": True, "commit_status": "unchanged", "commit_hash": None}
         receipt_path = _receipt_path(repo_root, token)
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write(receipt_path, json.dumps({"state": "pending", "report": relative}))
