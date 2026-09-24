@@ -255,3 +255,21 @@ def test_global_template_requires_committed_project_override(repo: Path, tmp_pat
     git(repo, "commit", "-qm", "pin templates")
     accepted = invoke("--report-only")
     assert accepted.exit_code == 0, accepted.output
+
+
+def test_repeated_qualified_analysis_is_unchanged(repo: Path):
+    first = invoke("--report-only")
+    assert first.exit_code == 0, first.output
+    report = (repo / REPORT).read_bytes()
+    head = git(repo, "rev-parse", "HEAD")
+    (repo / "application.txt").write_text("staged\n")
+    git(repo, "add", "application.txt")
+    (repo / "application.txt").write_text("staged\nworking\n")
+    index = git(repo, "ls-files", "--stage", "-v", "-z")
+    repeated = invoke("--report-only")
+    assert repeated.exit_code == 0, repeated.output
+    assert json.loads(repeated.output)["commit_status"] == "unchanged"
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert (repo / REPORT).read_bytes() == report
+    assert git(repo, "ls-files", "--stage", "-v", "-z") == index
+    assert (repo / "application.txt").read_text() == "staged\nworking\n"
