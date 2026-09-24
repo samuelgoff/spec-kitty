@@ -187,13 +187,13 @@ def test_material_change_invalidates_qualified_report(repo: Path):
     assert not check_analysis_report_current(mission, repo).ok
 
 
-@pytest.mark.parametrize("change", ["input", "index"])
+@pytest.mark.parametrize("change", ["input", "index", "report"])
 def test_race_before_commit_preserves_concurrent_state(repo: Path, monkeypatch: pytest.MonkeyPatch, change: str):
     from specify_cli.git import report_transaction
     from specify_cli.analysis_report import check_analysis_report_current
 
     original = report_transaction.write_analysis_report
-    target = repo / (f"kitty-specs/{SLUG}/spec.md" if change == "input" else "application.txt")
+    target = repo / ({"input": f"kitty-specs/{SLUG}/spec.md", "report": REPORT}.get(change, "application.txt"))
 
     def race(**kwargs):
         result = original(**kwargs)

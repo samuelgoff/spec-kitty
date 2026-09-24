@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 from uuid import uuid4
 
-from mission_runtime import CommitTarget, MissionArtifactKind
+from mission_runtime import MissionArtifactKind, placement_seam
 
 from specify_cli.analysis_inputs import collect_material_inputs
 from specify_cli.analysis_report import ANALYSIS_REPORT_FILENAME, _sha256_file, parse_structured_findings, write_analysis_report
@@ -123,7 +123,10 @@ def record_report_transaction(*, repo_root: Path, feature_dir: Path, body: str, 
             if cursor.is_symlink():
                 raise ValueError("Report destination contains a symlink")
         _require_idle(repo_root)
-        preflight_commit(repo_root=repo_root, worktree_root=repo_root, target=CommitTarget(target_branch), message=message, paths=(report,))
+        target = placement_seam(repo_root, feature_dir.name).write_target(MissionArtifactKind.ANALYSIS_REPORT)
+        if target.ref != target_branch:
+            raise ValueError("Analysis report placement changed before preflight")
+        preflight_commit(repo_root=repo_root, worktree_root=repo_root, target=target, message=message, paths=(report,))
         inputs = collect_material_inputs(feature_dir, repo_root)
         material_paths = {entry["path"] for entry in inputs.values()}
         dirty = _dirty_paths(repo_root)
@@ -142,7 +145,9 @@ def record_report_transaction(*, repo_root: Path, feature_dir: Path, body: str, 
             feature_dir=feature_dir, repo_root=repo_root, body=body, analyzer_agent=analyzer_agent, material_inputs=inputs, transaction_id=token
         )
         wrote = True
-        report_hash = _sha256_file(report)
+        report_hash = result.content_sha256
+        if report_hash is None or _sha256_file(report) != report_hash:
+            raise ValueError("Report changed after rendering; retained report is unqualified")
         _require_idle(repo_root)
         if (
             _git(repo_root, "rev-parse", "HEAD").strip() != head

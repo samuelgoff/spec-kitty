@@ -71,17 +71,17 @@ def _declared_paths(charter: dict[str, Any]) -> list[str]:
     return paths
 
 
-def _local_references(value: Any) -> list[str]:
+def _references(value: Any, field: str) -> list[str]:
     paths = []
     if isinstance(value, dict):
         for key, nested in value.items():
-            if key == "local_path" and isinstance(nested, str) and nested:
+            if key == field and isinstance(nested, str) and nested:
                 paths.append(nested)
             else:
-                paths.extend(_local_references(nested))
+                paths.extend(_references(nested, field))
     elif isinstance(value, list):
         for nested in value:
-            paths.extend(_local_references(nested))
+            paths.extend(_references(nested, field))
     return paths
 
 
@@ -103,6 +103,19 @@ def _entry(path: Path, root: Path, feature_dir: Path) -> dict[str, str | None]:
         static = {key: value for key, value in metadata.items() if key not in MUTABLE_FIELDS}
         return {"path": relative, "sha256": _sha256_text(json.dumps(static, sort_keys=True, default=str) + "\n" + body)}
     return _artifact_hash_entry(path, root)
+
+
+def _source_paths(charter: dict[str, Any], root: Path) -> list[Path]:
+    paths = []
+    for value in _references(charter, "source_path"):
+        # Bundled provenance is covered by its digest; URL provenance is
+        # declarative charter text, not a filesystem dependency.
+        if value.startswith("${SPEC_KITTY_PACKS_ROOT}/") or "://" in value:
+            continue
+        if "$" in value:
+            raise MaterialInputError("Unresolved external authority source is unsupported")
+        paths.append(root / value)
+    return paths
 
 
 def _package_inputs() -> dict[str, dict[str, str | None]]:
@@ -194,8 +207,10 @@ def collect_material_inputs(feature_dir: Path, repo_root: Path) -> dict[str, dic
     for pack in load_pack_registry(root).packs:
         include(pack.effective_root(root))
 
-    for value in _local_references(charter):
+    for value in _references(charter, "local_path"):
         include(charter_path.parent / value)
+    for path in _source_paths(charter, root):
+        include(path)
     for path in _resolved_template_paths(root, feature_dir):
         include(path)
 

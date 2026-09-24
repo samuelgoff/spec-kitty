@@ -102,6 +102,7 @@ class AnalysisReportResult:
     verdict: str
     issue_counts: dict[str, int | None]
     findings: list[dict[str, Any]]
+    content_sha256: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -521,6 +522,7 @@ def write_analysis_report(
         verdict=verdict,
         issue_counts=issue_counts,
         findings=findings,
+        content_sha256=_sha256_text(content),
     )
 
 
