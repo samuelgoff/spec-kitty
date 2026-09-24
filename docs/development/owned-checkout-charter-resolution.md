@@ -24,6 +24,13 @@ selected read checkout. Explicit single-branch missions execute in their
 existing owned checkout; Git identity and primary-only charter authoring policy
 remain separate from this read scope.
 
+Status reads also carry explicit owned-checkout authority. A validated
+single-branch checkout can live under the repository's `.worktrees` directory
+without becoming a coordination checkout. The reader validates the canonical
+primary root, owned checkout, mission directory, topology and target branch
+before reading events. Existing primary and coordination contract guards remain
+unchanged for callers that have not supplied that explicit authority.
+
 ## Evidence and implementation log
 
 - Regression reproduced both incorrect outcomes before the implementation:
@@ -55,6 +62,12 @@ remain separate from this read scope.
   focused composition/review tests pass, including a real changed-file diff
   against a claim commit with divergent primary metadata. Missing claim proof
   is explicitly unavailable, never a primary-base or branch-to-itself fallback.
+- In-repository owned task finalization reproduced a status contract refusal
+  because path shape overrode validated ownership. Test-first `4ff6ff0c0`
+  reproduced it alongside the missing explicit contract (3 failed, 2 passed).
+  The fix carries owned scope into both event and complete-stream readers;
+  the five regression cases pass, including invalid roots and coordination
+  rejection. Source qualification does not change the global CLI installation.
 
 Workspace: reused the clean review-thread-closure checkout, preserving its two
 unmerged commits on its prior branch. Primary has unrelated dirty changes and
