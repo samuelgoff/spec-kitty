@@ -234,12 +234,14 @@ def test_missing_receipt_never_qualifies_copied_report(repo: Path):
 def test_combined_runtime_actual_implementation_gate(repo: Path, mutation: str, capsys: pytest.CaptureFixture[str]):
     """The lifecycle gate must consume the qualified reader from this runtime."""
     from typer import Exit
+    from specify_cli.analysis_report import check_analysis_report_current, collect_input_artifact_hashes
     from specify_cli.cli.commands.agent.workflow import _require_current_analysis_report
 
     result = invoke("--report-only")
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["commit_status"] == "committed"
     mission = repo / "kitty-specs" / SLUG
+    legacy_inputs = collect_input_artifact_hashes(mission, repo)
     report_bytes = (repo / REPORT).read_bytes()
     receipts = list((repo / ".git/spec-kitty-report-transactions").glob("*.json"))
     assert len(receipts) == 1
@@ -250,14 +252,22 @@ def test_combined_runtime_actual_implementation_gate(repo: Path, mutation: str, 
         receipt["state"] = "pending"
         receipts[0].write_text(json.dumps(receipt))
     elif mutation == "material_only":
-        # Not one of the legacy spec/plan/tasks hashes: prove material closure.
-        charter = repo / ".kittify/charter/charter.yaml"
-        charter.write_text(charter.read_text() + "project_name: changed\n")
-        git(repo, "add", str(charter))
-        git(repo, "commit", "-qm", "change governed input")
+        # WP definitions are outside legacy spec/plan/tasks/charter hashes.
+        definition = mission / "tasks/WP01-proof.md"
+        definition.write_text(definition.read_text() + "Changed implementation requirement.\n")
+        git(repo, "add", str(definition))
+        git(repo, "commit", "-qm", "change work package definition")
+    assert collect_input_artifact_hashes(mission, repo) == legacy_inputs
+    freshness = check_analysis_report_current(mission, repo)
     if mutation == "qualified":
+        assert freshness.ok
         assert _require_current_analysis_report(mission, repo, SLUG) is None
     else:
+        expected_reason = "stale_analysis_report" if mutation == "material_only" else "unqualified_report_transaction"
+        assert freshness.reason == expected_reason
+        if mutation == "material_only":
+            assert freshness.mismatches
+            assert not set(freshness.mismatches).intersection(legacy_inputs)
         with pytest.raises(Exit) as exc:
             _require_current_analysis_report(mission, repo, SLUG)
         assert exc.value.exit_code == 1
