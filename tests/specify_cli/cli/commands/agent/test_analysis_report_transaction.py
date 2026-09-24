@@ -23,6 +23,12 @@ def git(root: Path, *args: str) -> bytes:
 
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    from specify_cli.runtime import resolver
+
+    # The suite home is per worker, so other tests may have installed global
+    # templates there. Each transaction fixture needs its own authority source;
+    # the explicit global-template refusal test replaces this seam deliberately.
+    monkeypatch.setattr(resolver, "get_kittify_home", lambda: tmp_path / "runtime-home")
     root = tmp_path / "repo"
     root.mkdir()
     git(root, "init", "-q", "-b", "report-work")
