@@ -17,8 +17,9 @@ from ruamel.yaml.error import YAMLError
 
 from charter.activation.context_renderers.authority_paths import DEFAULT_AUTHORITY_PATHS
 from charter.activation.pack_context import resolve_charter_yaml_pointer
-from charter.offering.drg.org_pack_config import load_pack_registry
-from charter.offering.pack_paths import built_in_root
+from charter.bundle import CHARTER_MD, CHARTER_YAML
+from charter.drg import load_pack_registry
+from charter.pack_paths import PackRootNotFound, built_in_root
 from kernel.paths import get_package_asset_root
 
 
@@ -125,8 +126,6 @@ def _package_inputs() -> dict[str, dict[str, str | None]]:
     if os.environ.get("SPEC_KITTY_PACKS_ROOT") or os.environ.get("SPEC_KITTY_TEMPLATE_ROOT"):
         raise MaterialInputError("Environment-selected mutable package authority is unsupported")
     result = {}
-    from charter.offering.pack_paths import PackRootNotFound
-
     try:
         roots = (("built-in", built_in_root()), ("mission-assets", get_package_asset_root()))
     except (PackRootNotFound, OSError) as exc:
@@ -190,7 +189,7 @@ def collect_material_inputs(feature_dir: Path, repo_root: Path) -> dict[str, dic
     config_path = root / ".kittify/config.yaml"
     include(config_path)
     config = _mapping(config_path)
-    charter_path = resolve_charter_yaml_pointer(root, config) or root / ".kittify/charter/charter.yaml"
+    charter_path = resolve_charter_yaml_pointer(root, config) or root / CHARTER_YAML
     include(charter_path)
     charter = _mapping(charter_path)
     for name in (*_hash_inputs(), "meta.json", "wps.yaml"):
@@ -200,7 +199,7 @@ def collect_material_inputs(feature_dir: Path, repo_root: Path) -> dict[str, dic
     # operation logs, runtime cache, status streams or generated task state.
     for name in ("missions", "overrides", "doctrine", "templates", "command-templates"):
         include(root / ".kittify" / name)
-    for name in ("charter.md", "interview/answers.yaml", "_LIBRARY"):
+    for name in (CHARTER_MD.name, "interview/answers.yaml", "_LIBRARY"):
         include(charter_path.parent / name)
     for value in _declared_paths(charter):
         include(root / value)

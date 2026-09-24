@@ -5,6 +5,18 @@ from pathlib import Path
 import pytest
 
 
+def test_bundled_authority_failure_uses_charter_exception(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from charter.pack_paths import PackRootNotFound
+    from specify_cli import analysis_inputs
+
+    def unavailable():
+        raise PackRootNotFound("built-in")
+
+    monkeypatch.setattr(analysis_inputs, "built_in_root", unavailable)
+    with pytest.raises(analysis_inputs.MaterialInputError, match="Bundled analysis authority unavailable"):
+        analysis_inputs.collect_material_inputs(tmp_path / "kitty-specs/test", tmp_path)
+
+
 def test_declared_authority_and_absent_sentinel(tmp_path: Path):
     from specify_cli.analysis_inputs import collect_material_inputs
 
