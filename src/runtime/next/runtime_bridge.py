@@ -145,6 +145,8 @@ import re
 import shutil
 from collections.abc import Mapping
 from pathlib import Path
+
+from specify_cli.core.owned_mission import effective_root_kwargs
 from typing import TYPE_CHECKING, Any
 
 from kernel.clock import now_utc_iso
@@ -1316,6 +1318,7 @@ def _advance_run_state_after_composition(
     progress: dict[str, int | float] | None,
     origin: dict[str, Any],
     sync_emitter: RuntimeEventEmitter,
+    effective_root: Path | None = None,
 ) -> Decision:
     """Thin compat delegate — forwards to
     :func:`runtime_bridge_engine.advance_run_state_after_composition`. See the
@@ -1332,6 +1335,7 @@ def _advance_run_state_after_composition(
         progress=progress,
         origin=origin,
         sync_emitter=sync_emitter,
+        **effective_root_kwargs(effective_root),
     )
 
 
@@ -1579,6 +1583,7 @@ class DecideNextContext:
     run_ref: MissionRunRef
     run_dir: Path
     current_step_id: str | None
+    effective_root: Path | None = None
 
 
 def _dn_bootstrap(
@@ -1760,6 +1765,7 @@ def _dn_bootstrap(
             run_ref=run_ref,
             run_dir=run_dir,
             current_step_id=current_step_id,
+            effective_root=effective_root,
         ),
         None,
     )
@@ -1834,6 +1840,7 @@ def _dn_dependency_gate(ctx: DecideNextContext) -> Decision | None:
                 progress,
                 origin,
                 run_ref,
+                **effective_root_kwargs(ctx.effective_root),
             )
         # All WPs done for this step — check guards before advancing.
         #
@@ -1877,6 +1884,7 @@ def _dn_dependency_gate(ctx: DecideNextContext) -> Decision | None:
                 origin,
                 run_ref,
                 guard_failures=guard_failures,
+                **effective_root_kwargs(ctx.effective_root),
             )
 
     # Check guards for non-WP steps before advancing.
@@ -1909,6 +1917,7 @@ def _dn_dependency_gate(ctx: DecideNextContext) -> Decision | None:
                 feature_dir,
                 repo_root,
                 mission_type,
+                **effective_root_kwargs(ctx.effective_root),
             )
             prompt_file: str | None = None
             prompt_error: str | None = None
@@ -1921,6 +1930,7 @@ def _dn_dependency_gate(ctx: DecideNextContext) -> Decision | None:
                     agent,
                     repo_root,
                     mission_type,
+                    **effective_root_kwargs(ctx.effective_root),
                 )
             else:
                 prompt_error = f"no action mapped for step '{current_step_id}'; cannot resolve prompt"
@@ -1974,6 +1984,7 @@ def _dn_composition_blocked_decision(
         ctx.feature_dir,
         ctx.repo_root,
         ctx.mission_type,
+        **effective_root_kwargs(ctx.effective_root),
     )
     prompt_file = (
         _build_prompt_safe(
@@ -1984,6 +1995,7 @@ def _dn_composition_blocked_decision(
             ctx.agent,
             ctx.repo_root,
             ctx.mission_type,
+            **effective_root_kwargs(ctx.effective_root),
         )
         if action
         else None
@@ -2101,6 +2113,7 @@ def _dn_composition_dispatch(ctx: DecideNextContext) -> Decision | None:
                 progress=progress,
                 origin=origin,
                 sync_emitter=ctx.emitter_for_engine,
+                **effective_root_kwargs(ctx.effective_root),
             )
         except Exception as exc:  # noqa: BLE001 — EDGE-003 contract: any
             # advancement-helper failure must surface as a structured
@@ -2334,6 +2347,7 @@ def _dn_decision_materialize(ctx: DecideNextContext) -> Decision:
         ctx.now,
         ctx.progress,
         ctx.origin,
+        **effective_root_kwargs(ctx.effective_root),
     )
 
 
@@ -2932,6 +2946,7 @@ def _build_wp_iteration_decision(
     origin: dict,
     run_ref: MissionRunRef,
     guard_failures: list[str] | None = None,
+    effective_root: Path | None = None,
 ) -> Decision:
     """Build a Decision for WP iteration within a step."""
     action, wp_id, workspace_path = _state_to_action(
@@ -2940,6 +2955,7 @@ def _build_wp_iteration_decision(
         feature_dir,
         repo_root,
         mission_type,
+        **effective_root_kwargs(effective_root),
     )
 
     if action is None:
@@ -2968,6 +2984,7 @@ def _build_wp_iteration_decision(
         agent,
         repo_root,
         mission_type,
+        **effective_root_kwargs(effective_root),
     )
     # WP06 (FR-006/FR-013) / WP07 (FR-011): step_or_blocked never issues
     # kind=step with an unresolvable prompt_file; see the analogous note in
@@ -3038,6 +3055,7 @@ def _map_wp_step_decision(
     progress: dict | None,
     origin: dict,
     run_id: str | None,
+    effective_root: Path | None = None,
 ) -> Decision:
     """WP-iteration branch of the ``kind="step"`` mapping (#2531 WP07/T026).
 
@@ -3050,6 +3068,7 @@ def _map_wp_step_decision(
         feature_dir,
         repo_root,
         mission_type,
+        **effective_root_kwargs(effective_root),
     )
     if action is None:
         return _materialize_decision(
@@ -3075,6 +3094,7 @@ def _map_wp_step_decision(
         agent,
         repo_root,
         mission_type,
+        **effective_root_kwargs(effective_root),
     )
     return _materialize_decision(
         _cores.DecisionEnvelope(
@@ -3109,6 +3129,7 @@ def _map_non_wp_step_decision(
     progress: dict | None,
     origin: dict,
     run_id: str | None,
+    effective_root: Path | None = None,
 ) -> Decision:
     """Non-WP branch of the ``kind="step"`` mapping (#2531 WP07/T026).
 
@@ -3121,6 +3142,7 @@ def _map_non_wp_step_decision(
         feature_dir,
         repo_root,
         mission_type,
+        **effective_root_kwargs(effective_root),
     )
     prompt_file: str | None = None
     prompt_error: str | None = None
@@ -3133,6 +3155,7 @@ def _map_non_wp_step_decision(
             agent,
             repo_root,
             mission_type,
+            **effective_root_kwargs(effective_root),
         )
     else:
         prompt_error = "no action and no step_id; cannot resolve prompt"
@@ -3167,6 +3190,7 @@ def _map_runtime_decision(
     timestamp: str,
     progress: dict | None,
     origin: dict,
+    effective_root: Path | None = None,
 ) -> Decision:
     """Convert runtime NextDecision to CLI Decision dataclass.
 
@@ -3260,6 +3284,7 @@ def _map_runtime_decision(
             progress=progress,
             origin=origin,
             run_id=run_id,
+            **effective_root_kwargs(effective_root),
         )
 
     return _map_non_wp_step_decision(
@@ -3273,6 +3298,7 @@ def _map_runtime_decision(
         progress=progress,
         origin=origin,
         run_id=run_id,
+        **effective_root_kwargs(effective_root),
     )
 
 

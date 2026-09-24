@@ -1,11 +1,11 @@
 ---
-title: Owned-checkout charter resolution repair
-description: How mission creation resolves activation and specification templates from a validated owned checkout, with regression evidence and qualification limits.
+title: Owned-checkout lifecycle resolution repair
+description: How mission creation and next-step work package lookup retain the validated checkout, with regression evidence and explicit qualification limits.
 doc_status: reference
 updated: 2026-09-24
 ---
 
-# Owned-checkout charter resolution repair
+# Owned-checkout lifecycle resolution repair
 
 An explicitly validated `--owned-checkout` selects the mission write surface.
 Mission activation, mission-type context and specification template resolution
@@ -16,6 +16,13 @@ or accepting primary activation when the owned checkout was inactive.
 The repair keeps ownership validation and the inactive-charter refusal intact.
 The existing `effective_root` is the single configuration root after validation;
 without an owned checkout it remains the primary root.
+
+The same scope must survive task finalization into implementation. Runtime
+decisions now retain `effective_root` through composition advancement, WP
+metadata, prompts and lane membership reads. Metadata caches are keyed by the
+selected read checkout. Explicit single-branch missions execute in their
+existing owned checkout; Git identity and primary-only charter authoring policy
+remain separate from this read scope.
 
 ## Evidence and implementation log
 
@@ -34,6 +41,14 @@ without an owned checkout it remains the primary root.
 - Decision: resolve all three configuration/template reads consistently; do not
   weaken the guard, mirror configuration into primary or patch installed tools.
 - Limitation: this is source qualification, not a released CLI installation.
+- Follow-up regression: finalized owned-only WP lookup and same-slug metadata
+  isolation both failed before repair (test-first commit `edaa9cd83`).
+- Integration and workspace regression run: 120 passed. The owned mission has
+  no primary counterpart; the next decision mapper emits a real WP prompt and
+  the existing checkout path without creating another lane.
+- Real Filament run `36da1c14fa454bdab888f1d1a837c8f6` now emits
+  `kind=step`, `action=implement`, `wp_id=WP01` in its existing owned checkout.
+  This is workflow qualification, not implementation or production acceptance.
 
 Workspace: reused the clean review-thread-closure checkout, preserving its two
 unmerged commits on its prior branch. Primary has unrelated dirty changes and

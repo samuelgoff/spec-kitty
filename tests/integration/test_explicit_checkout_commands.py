@@ -193,17 +193,50 @@ def test_finalize_seeds_owned_status_only(checkouts):
 
 def test_finalized_owned_tasks_resolve_for_next_implementation(checkouts):
     from runtime.next.decision import _state_to_action
+    from runtime.next.runtime_bridge import NextDecision, _map_runtime_decision
+    from mission_runtime import resolve_action_context
+    from tests._factories import provision_test_charter
 
     primary, owned, sibling = checkouts
     before = snapshot(primary), snapshot(sibling)
     result = invoke("finalize-tasks", owned)
     assert result.exit_code == 0, result.output
     action, wp_id, workspace = _state_to_action(
-        "implement", SLUG, owned / "kitty-specs" / SLUG, primary,
-        "software-dev", effective_root=owned,
+        "implement",
+        SLUG,
+        owned / "kitty-specs" / SLUG,
+        primary,
+        "software-dev",
+        effective_root=owned,
     )
     assert (action, wp_id) == ("implement", "WP01")
-    assert workspace is not None
+    assert workspace == str(owned)
+    provision_test_charter(owned)
+    decision = _map_runtime_decision(
+        NextDecision(kind="step", run_id="test-run", mission_key=SLUG, step_id="implement"),
+        "codex",
+        SLUG,
+        "software-dev",
+        primary,
+        owned / "kitty-specs" / SLUG,
+        "2026-09-24T00:00:00Z",
+        None,
+        {},
+        effective_root=owned,
+    )
+    assert decision.kind == "step", decision.reason
+    assert decision.wp_id == "WP01"
+    assert decision.workspace_path == str(owned)
+    assert "Local task" in Path(decision.prompt_file).read_text()
+    context = resolve_action_context(
+        primary,
+        action="implement",
+        feature=SLUG,
+        wp_id="WP01",
+        agent="codex",
+        effective_root=owned,
+    )
+    assert Path(context.wp_file) == owned / "kitty-specs" / SLUG / "tasks/WP01-test.md"
     assert (snapshot(primary), snapshot(sibling)) == before
 
 
