@@ -29,7 +29,8 @@
       "last_transition_at": "2026-09-24T07:14:50.576428+00:00",
       "model": "__resolved_model_absent__",
       "notes": [
-        "Implementation and qualification complete; independent review cleared source f5c35e71a; PR5017 records evidence and baseline limitations."
+        "Implementation and qualification complete; independent review cleared source f5c35e71a; PR5017 records evidence and baseline limitations.",
+        "Independent replay_contract_review cleared implementation except P2 unchanged outcome; root independently cleared P2 correction f5c35e71ad4b46fa4170040189c92b91ac585193. Final CLI negative controls passed; 203 owning tests passed and 2 skipped. Four separately documented fast-suite baseline failures remain."
       ],
       "provider": "__resolved_provider_absent__",
       "review_result": {
