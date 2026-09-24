@@ -222,7 +222,7 @@ def _build_wp_prompt(
 
     if action == "review":
         review_paths = ""
-        if not workspace.lane_id:
+        if not workspace.lane_id or effective_root is not None:
             if wp_files:
                 wp_meta, _ = read_wp_frontmatter(wp_files[0])
                 if wp_meta.owned_files:
@@ -246,7 +246,7 @@ def _build_wp_prompt(
                     "--",
                     *(str(path) for path in wp_files),
                 ],
-                cwd=repo_root,
+                cwd=effective_root or repo_root,
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -262,7 +262,7 @@ def _build_wp_prompt(
                     review_base = commit_hash.strip()
                     break
         lines.append("REVIEW COMMANDS:")
-        if workspace.lane_id:
+        if workspace.lane_id and effective_root is None:
             review_base = (
                 workspace.context.base_branch if workspace.context and workspace.context.base_branch else get_feature_target_branch(repo_root, mission_slug)
             )

@@ -2043,6 +2043,7 @@ def _dn_composition_dispatch(ctx: DecideNextContext) -> Decision | None:
     mission_type = ctx.mission_type
     feature_dir = ctx.feature_dir
     repo_root = ctx.repo_root
+    config_root = ctx.effective_root or repo_root
     now = ctx.now
     progress = ctx.progress
     origin = ctx.origin
@@ -2056,7 +2057,7 @@ def _dn_composition_dispatch(ctx: DecideNextContext) -> Decision | None:
             mission_type,
             current_step_id,
             run_dir=ctx.run_dir,
-            repo_root=repo_root,
+            repo_root=config_root,
         )
     ):
         composed_action = _normalize_action_for_composition(current_step_id)
@@ -2067,14 +2068,14 @@ def _dn_composition_dispatch(ctx: DecideNextContext) -> Decision | None:
         # ``_resolve_profile_hint`` falls back to ``_ACTION_PROFILE_DEFAULTS``
         # — preserving byte-identical built-in dispatch behavior (FR-010).
         resolved_profile, runtime_contract = _composition._composition_dispatch_inputs(
-            repo_root=repo_root,
+            repo_root=config_root,
             run_dir=ctx.run_dir,
             mission=mission_type,
             step_id=current_step_id,
             action=composed_action,
         )
         composition_failures = _dispatch_via_composition(
-            repo_root=repo_root,
+            repo_root=config_root,
             mission=mission_type,
             action=composed_action,
             actor=agent,

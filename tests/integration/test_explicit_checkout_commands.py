@@ -310,6 +310,14 @@ def test_owned_review_prompt_uses_owned_target_branch(checkouts):
     assert result.exit_code == 0, result.output
     provision_test_charter(owned)
     shutil.copytree(owned / "kitty-specs" / SLUG, primary / "kitty-specs" / SLUG)
+    task = owned / "kitty-specs" / SLUG / "tasks/WP01-test.md"
+    task.write_text(task.read_text() + "\nClaimed for implementation.\n")
+    git(owned, "add", str(task))
+    git(owned, "commit", "-qm", "Start WP01 implementation")
+    claim = git(owned, "rev-parse", "HEAD")
+    (owned / "app.py").write_text("VALUE = 2\n")
+    git(owned, "add", "app.py")
+    git(owned, "commit", "-qm", "Implement local task")
     meta = primary / "kitty-specs" / SLUG / "meta.json"
     data = json.loads(meta.read_text())
     data["target_branch"] = "wrong-primary-base"
@@ -318,8 +326,9 @@ def test_owned_review_prompt_uses_owned_target_branch(checkouts):
         "review", owned / "kitty-specs" / SLUG, SLUG, "WP01", "codex",
         primary, "software-dev", effective_root=owned,
     )
-    assert f"git diff {TARGET}..HEAD --stat" in prompt
+    assert f"git diff {claim}..HEAD --stat -- app.py" in prompt
     assert "wrong-primary-base" not in prompt
+    assert "+VALUE = 2" in git(owned, "diff", f"{claim}..HEAD", "--", "app.py")
 
 
 COMMANDS = ["check-prerequisites", "finalize-tasks", "spec-commit", "accept"]
