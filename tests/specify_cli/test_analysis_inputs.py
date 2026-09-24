@@ -53,3 +53,64 @@ def test_wp_runtime_fields_do_not_change_definition_hash(tmp_path: Path):
     assert collect_material_inputs(mission, tmp_path) == before
     wp.write_text("---\nwork_package_id: WP01\nlane: in_progress\n---\nChanged definition.\n")
     assert collect_material_inputs(mission, tmp_path) != before
+
+
+@pytest.mark.parametrize("text", ["[not: valid", "[]"])
+def test_malformed_configuration_refuses_dependency_proof(tmp_path: Path, text: str):
+    from specify_cli.analysis_inputs import MaterialInputError, collect_material_inputs
+
+    (tmp_path / ".kittify").mkdir()
+    (tmp_path / ".kittify/config.yaml").write_text(text)
+    with pytest.raises(MaterialInputError):
+        collect_material_inputs(tmp_path / "kitty-specs/test", tmp_path)
+
+
+@pytest.mark.parametrize("declaration", ["charter: []", "charter: {authority_paths: invalid}", "charter: {authority_paths: ['../outside']}"])
+def test_invalid_or_escaping_authority_refuses(tmp_path: Path, declaration: str):
+    from specify_cli.analysis_inputs import MaterialInputError, collect_material_inputs
+
+    charter = tmp_path / ".kittify/charter"
+    charter.mkdir(parents=True)
+    (charter / "charter.yaml").write_text(f"governance:\n  {declaration}\n")
+    with pytest.raises(MaterialInputError):
+        collect_material_inputs(tmp_path / "kitty-specs/test", tmp_path)
+
+
+def test_external_charter_pointer_refuses(tmp_path: Path):
+    from specify_cli.analysis_inputs import MaterialInputError, collect_material_inputs
+
+    root = tmp_path / "repo"
+    (root / ".kittify").mkdir(parents=True)
+    external = tmp_path / "authority.yaml"
+    external.write_text("{}")
+    (root / ".kittify/config.yaml").write_text(f"charter: {external}\n")
+    with pytest.raises(MaterialInputError, match="External mutable"):
+        collect_material_inputs(root / "kitty-specs/test", root)
+
+
+def test_catalog_source_and_library_content_are_material(tmp_path: Path):
+    from specify_cli.analysis_inputs import collect_material_inputs
+
+    charter = tmp_path / ".kittify/charter"
+    (charter / "_LIBRARY").mkdir(parents=True)
+    (charter / "charter.yaml").write_text(
+        "catalog:\n- source_path: source.md\n  local_path: _LIBRARY/ref.md\n- source_path: '${SPEC_KITTY_PACKS_ROOT}/built-in/example.yaml'\n"
+    )
+    (tmp_path / "source.md").write_text("source")
+    (charter / "_LIBRARY/ref.md").write_text("resolved authority")
+    mission = tmp_path / "kitty-specs/test"
+    before = collect_material_inputs(mission, tmp_path)
+    assert "material:source.md" in before
+    assert "material:.kittify/charter/_LIBRARY/ref.md" in before
+    (tmp_path / "source.md").write_text("changed source")
+    assert collect_material_inputs(mission, tmp_path) != before
+
+
+def test_malformed_wp_definition_is_refused(tmp_path: Path):
+    from specify_cli.analysis_inputs import MaterialInputError, collect_material_inputs
+
+    mission = tmp_path / "kitty-specs/test"
+    (mission / "tasks").mkdir(parents=True)
+    (mission / "tasks/WP01-test.md").write_text("missing definition frontmatter")
+    with pytest.raises(MaterialInputError, match="Invalid WP definition"):
+        collect_material_inputs(mission, tmp_path)
