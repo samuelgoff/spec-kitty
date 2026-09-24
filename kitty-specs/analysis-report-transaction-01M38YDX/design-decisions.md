@@ -19,6 +19,7 @@
 - `agent action implement` lacks `--owned-checkout`; supported `next` plus `agent tasks move-task --owned-checkout` claimed this work package. The command shown in the initial task text was not accepted by the CLI.
 - CI runs exposed shared per-worker global-template contamination in the new recorder fixtures. Each recorder fixture now isolates canonical template resolution to its own home; the explicit external-global refusal case still overrides that home and verifies refusal followed by committed project overrides.
 - The deliberate `--report-only` addition also requires updating the frozen CLI flag contract. Its default remains false and has an explicit contract assertion; this is an intentional opt-in interface extension.
+- Architecture CI identified direct charter implementation imports, duplicated charter paths, and two obsolete formatter exclusions. The correction uses existing canonical facades/constants, adds an identity-preserving exception export, and removes the obsolete exclusions without widening an allowlist.
 
 ### Known limitations
 
@@ -36,3 +37,4 @@
 - Required fast baseline: 2,043 passed, 5 skipped, 4 known baseline failures (retired cache path guard; three primary-only charter JSON tests under linked cwd). This is not full-green. Log: task-local `/tmp/spec-kitty-recorder-test-fast.log`.
 - Read-only Aletheia closure after owner template pin `20af78ee`: 479 entries, no dirty or untracked material inputs. No Aletheia report command has been run by this agent.
 - Separate integration source `4483ed812` preserves reviewed PR5009 lifecycle code and recorder implementation. Owned lifecycle/recorder qualification passed 136 tests; final recorder and corrected gate cases passed 30 tests. Independent review cleared the composition and controls. A separately installed, isolated wheel passed seven real-Git writer/gate checks outside the source checkout; eleven critical module hashes matched source. Qualification does not constitute an upstream release. Exact provenance is retained in the task-owned `spec-kitty-composite-4483ed812/qualification.json` runtime artifact.
+- Architecture correction `529e18732`, independently reviewed, passes 263 focused architecture, authority, and recorder tests; one expected legacy-key warning remains. Strict mypy over five owning modules and scoped Ruff lint pass. The prior remote head's module, CLI, documentation, and quality gates passed; its architecture failure and downstream router failure are addressed by this correction and require fresh CI.
