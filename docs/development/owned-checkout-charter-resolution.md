@@ -50,6 +50,11 @@ remain separate from this read scope.
   `kind=step`, `action=implement`, `wp_id=WP01` in its existing owned checkout.
   This is workflow qualification, not implementation or production acceptance.
 - Runtime bridge, blocked-path and prompt regression tests: 144 passed, 1 skipped.
+- Independent review found remaining composition-policy and review-base scope
+  leaks. Test-first `1be5352ee` reproduced both; `b1a1693bf` fixes them. Six
+  focused composition/review tests pass, including a real changed-file diff
+  against a claim commit with divergent primary metadata. Missing claim proof
+  is explicitly unavailable, never a primary-base or branch-to-itself fallback.
 
 Workspace: reused the clean review-thread-closure checkout, preserving its two
 unmerged commits on its prior branch. Primary has unrelated dirty changes and

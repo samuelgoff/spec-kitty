@@ -292,11 +292,20 @@ def test_owned_composition_policy_reaches_executor_before_advancing(checkouts, m
     monkeypatch.setattr(rb, "_dispatch_via_composition", execute)
     monkeypatch.setattr(rb, "_advance_run_state_after_composition", advance)
     context = SimpleNamespace(
-        agent="codex", mission_slug=SLUG, mission_type="software-dev",
-        feature_dir=owned / "kitty-specs" / SLUG, repo_root=primary,
-        effective_root=owned, now="2026-09-24T00:00:00Z", progress=None,
-        origin={}, run_ref=None, run_dir=run_dir, current_step_id="tasks",
-        result="success", emitter_for_engine=None,
+        agent="codex",
+        mission_slug=SLUG,
+        mission_type="software-dev",
+        feature_dir=owned / "kitty-specs" / SLUG,
+        repo_root=primary,
+        effective_root=owned,
+        now="2026-09-24T00:00:00Z",
+        progress=None,
+        origin={},
+        run_ref=None,
+        run_dir=run_dir,
+        current_step_id="tasks",
+        result="success",
+        emitter_for_engine=None,
     )
     assert rb._dn_composition_dispatch(context) == "advanced"
 
@@ -323,8 +332,14 @@ def test_owned_review_prompt_uses_owned_target_branch(checkouts):
     data["target_branch"] = "wrong-primary-base"
     meta.write_text(json.dumps(data))
     prompt, _ = build_prompt(
-        "review", owned / "kitty-specs" / SLUG, SLUG, "WP01", "codex",
-        primary, "software-dev", effective_root=owned,
+        "review",
+        owned / "kitty-specs" / SLUG,
+        SLUG,
+        "WP01",
+        "codex",
+        primary,
+        "software-dev",
+        effective_root=owned,
     )
     assert f"git diff {claim}..HEAD --stat -- app.py" in prompt
     assert "wrong-primary-base" not in prompt
