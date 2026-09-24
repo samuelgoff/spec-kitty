@@ -49,6 +49,7 @@ remain separate from this read scope.
 - Real Filament run `36da1c14fa454bdab888f1d1a837c8f6` now emits
   `kind=step`, `action=implement`, `wp_id=WP01` in its existing owned checkout.
   This is workflow qualification, not implementation or production acceptance.
+- Runtime bridge, blocked-path and prompt regression tests: 144 passed, 1 skipped.
 
 Workspace: reused the clean review-thread-closure checkout, preserving its two
 unmerged commits on its prior branch. Primary has unrelated dirty changes and
