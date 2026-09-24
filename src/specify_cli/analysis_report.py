@@ -287,10 +287,7 @@ def _charter_path(repo_root: Path) -> tuple[Path | None, Path]:
 def collect_input_artifact_hashes(feature_dir: Path, repo_root: Path) -> dict[str, dict[str, str | None]]:
     """Return current hashes for analyzer source artifacts."""
 
-    inputs = {
-        name: _artifact_hash_entry(feature_dir / name, repo_root)
-        for name in _hash_inputs()
-    }
+    inputs = {name: _artifact_hash_entry(feature_dir / name, repo_root) for name in _hash_inputs()}
     charter_path, canonical_root = _charter_path(repo_root)
     if charter_path is None:
         inputs["charter"] = {"path": None, "sha256": None}
@@ -335,9 +332,7 @@ def _split_carrier(body: str) -> tuple[dict[str, Any] | None, str]:
             closing = idx
             break
     if closing == -1:
-        raise FindingsCarrierError(
-            "Malformed analysis-findings carrier: opening '---' has no closing '---'."
-        )
+        raise FindingsCarrierError("Malformed analysis-findings carrier: opening '---' has no closing '---'.")
     try:
         parsed = yaml.load("\n".join(lines[1:closing]))
     except Exception as exc:  # pragma: no cover - ruamel raises subclasses
@@ -376,10 +371,7 @@ def _normalize_findings(
             raise FindingsCarrierError("Each analysis-findings entry must be a mapping.")
         severity = entry.get("severity")
         if severity not in _FINDING_SEVERITIES:
-            raise FindingsCarrierError(
-                f"Unknown finding severity {severity!r}; allowed (canonical): "
-                f"{sorted(_FINDING_SEVERITIES)}."
-            )
+            raise FindingsCarrierError(f"Unknown finding severity {severity!r}; allowed (canonical): {sorted(_FINDING_SEVERITIES)}.")
         tally[severity] += 1
         findings.append(
             {
@@ -392,9 +384,7 @@ def _normalize_findings(
     return findings, tally
 
 
-def _resolve_counts(
-    declared: Any, tally: dict[str, int]
-) -> dict[str, int | None]:
+def _resolve_counts(declared: Any, tally: dict[str, int]) -> dict[str, int | None]:
     """Reconcile the declared ``counts`` block (if any) against the tally."""
 
     if declared is None:
@@ -405,15 +395,11 @@ def _resolve_counts(
         raise FindingsCarrierError("analysis-findings 'counts' must be a mapping.")
     unknown_keys = set(declared) - _COUNT_KEYS
     if unknown_keys:
-        raise FindingsCarrierError(
-            f"Unknown counts keys {sorted(unknown_keys)}; allowed: {sorted(_COUNT_KEYS)}."
-        )
+        raise FindingsCarrierError(f"Unknown counts keys {sorted(unknown_keys)}; allowed: {sorted(_COUNT_KEYS)}.")
     for key in _FINDING_SEVERITIES:
         declared_count = declared.get(key, 0)
         if declared_count != tally[key]:
-            raise FindingsCarrierError(
-                f"counts[{key!r}]={declared_count} does not equal findings tally {tally[key]}."
-            )
+            raise FindingsCarrierError(f"counts[{key!r}]={declared_count} does not equal findings tally {tally[key]}.")
     counts = {key: int(tally[key]) for key in _FINDING_SEVERITIES}
     counts["info"] = int(declared.get("info", 0))
     return counts
@@ -476,6 +462,8 @@ def write_analysis_report(
     repo_root: Path,
     body: str,
     analyzer_agent: str | None = None,
+    material_inputs: dict[str, dict[str, str | None]] | None = None,
+    transaction_id: str | None = None,
 ) -> AnalysisReportResult:
     """Persist `analysis-report.md` with source-artifact hashes."""
 
@@ -486,6 +474,8 @@ def write_analysis_report(
 
     identity = resolve_mission_identity(feature_dir)
     input_artifacts = collect_input_artifact_hashes(feature_dir, repo_root)
+    if material_inputs is not None:
+        input_artifacts.update(material_inputs)
 
     # Verdict + counts derive from the structured analysis-findings/v1 carrier
     # ONLY (#1819). A malformed carrier fails loudly here on the write path
@@ -516,6 +506,9 @@ def write_analysis_report(
         "issue_counts": issue_counts,
         "findings": findings,
     }
+    if transaction_id is not None:
+        frontmatter["report_transaction"] = transaction_id
+        frontmatter["material_manifest_version"] = 1
     normalized_body = report_body if report_body.endswith("\n") else report_body + "\n"
     content = f"---\n{_frontmatter_text(frontmatter)}---\n\n{normalized_body}"
     path = feature_dir / ANALYSIS_REPORT_FILENAME
@@ -588,6 +581,12 @@ def check_analysis_report_current(feature_dir: Path, repo_root: Path) -> Analysi
             mismatches={},
         )
 
+    if "report_transaction" in frontmatter:
+        from specify_cli.git.report_transaction import report_is_qualified
+
+        if not report_is_qualified(repo_root, path, frontmatter["report_transaction"]):
+            return AnalysisFreshness(False, path, True, False, "unqualified_report_transaction", {})
+
     # NFR-002: collect_input_artifact_hashes can raise PathRelativizationError
     # (FR-007) for an unrelativizable hash-input path. Unlike write_analysis_report
     # (which intentionally lets this propagate), check_analysis_report_current's
@@ -606,12 +605,22 @@ def check_analysis_report_current(feature_dir: Path, repo_root: Path) -> Analysi
             reason=f"path_relativization_failed: {exc}",
             mismatches={},
         )
+    if "material_manifest_version" in frontmatter:
+        from specify_cli.analysis_inputs import MaterialInputError, collect_material_inputs
+
+        try:
+            if frontmatter["material_manifest_version"] != 1:
+                raise MaterialInputError("Unsupported material manifest version")
+            current.update(collect_material_inputs(feature_dir, repo_root))
+        except (MaterialInputError, OSError, ValueError) as exc:
+            return AnalysisFreshness(False, path, True, False, f"invalid_material_inputs: {exc}", {})
     mismatches: dict[str, dict[str, str | None]] = {}
-    for key in (*_hash_inputs(), "charter"):
+    keys = set(current) | set(saved_inputs) if "material_manifest_version" in frontmatter else (*_hash_inputs(), "charter")
+    for key in keys:
         saved_entry = saved_inputs.get(key)
         saved_hash = saved_entry.get("sha256") if isinstance(saved_entry, dict) else None
         current_hash = current.get(key, {}).get("sha256")
-        if saved_hash != current_hash:
+        if saved_hash != current_hash or key not in saved_inputs or key not in current:
             mismatches[key] = {
                 "saved_sha256": saved_hash,
                 "current_sha256": current_hash,

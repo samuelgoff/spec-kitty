@@ -64,6 +64,8 @@ def invoke(*extra: str):
 
 
 def test_report_only_preserves_unrelated_partial_staging(repo: Path):
+    from specify_cli.analysis_report import check_analysis_report_current
+
     app_file = repo / "application.txt"
     app_file.write_text("staged\n")
     git(repo, "add", "application.txt")
@@ -82,6 +84,7 @@ def test_report_only_preserves_unrelated_partial_staging(repo: Path):
     assert git(repo, "ls-files", "--stage", "-v", "--", "application.txt") == staged
     assert app_file.read_text() == "staged\nunstaged\n"
     assert (repo / "untracked.txt").read_bytes() == b"untracked\x00bytes"
+    assert check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok
 
 
 def test_default_still_refuses_unrelated_work(repo: Path):
@@ -133,3 +136,122 @@ def test_post_commit_index_race_cannot_unlock_analysis(repo: Path):
     assert git(repo, "rev-parse", "HEAD") != head
     assert (repo / "application.txt").read_text() == "concurrent\n"
     assert not check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok
+
+
+@pytest.mark.parametrize("mode", ["detached", "wrong_branch", "merge", "assume_unchanged", "symlink", "ignored_input"])
+def test_unsafe_state_refuses_without_report_write(repo: Path, mode: str):
+    if mode == "detached":
+        git(repo, "checkout", "--detach", "-q")
+    elif mode == "wrong_branch":
+        git(repo, "checkout", "-qb", "other")
+    elif mode == "merge":
+        (repo / ".git/MERGE_HEAD").write_bytes(git(repo, "rev-parse", "HEAD"))
+    elif mode == "assume_unchanged":
+        git(repo, "update-index", "--assume-unchanged", "application.txt")
+    elif mode == "symlink":
+        (repo / REPORT).symlink_to(repo / "application.txt")
+    else:
+        (repo / ".git/info/exclude").write_text(".kittify/templates/\n")
+        templates = repo / ".kittify/templates"
+        templates.mkdir()
+        (templates / "hidden.md").write_text("uncommitted authority")
+    head = git(repo, "rev-parse", "HEAD")
+    result = invoke("--report-only")
+    assert result.exit_code == 1, result.output
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert (repo / "application.txt").read_text() == "baseline\n"
+    if mode != "symlink":
+        assert not (repo / REPORT).exists()
+
+
+def test_post_commit_head_only_race_is_unqualified(repo: Path):
+    from specify_cli.analysis_report import check_analysis_report_current
+
+    hook = repo / ".git/hooks/post-commit"
+    hook.write_text('#!/bin/sh\nif test -z "$REPORT_RACE"; then REPORT_RACE=1 git -c core.hooksPath=/dev/null commit --allow-empty -qm concurrent; fi\n')
+    hook.chmod(0o755)
+    result = invoke("--report-only")
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.output)["commit_status"] == "committed_unqualified"
+    assert not check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok
+
+
+def test_material_change_invalidates_qualified_report(repo: Path):
+    from specify_cli.analysis_report import check_analysis_report_current
+
+    result = invoke("--report-only")
+    assert result.exit_code == 0, result.output
+    mission = repo / "kitty-specs" / SLUG
+    assert check_analysis_report_current(mission, repo).ok
+    (repo / ".kittify/config.yaml").write_text("charter: .kittify/charter/charter.yaml\nchanged: true\n")
+    assert not check_analysis_report_current(mission, repo).ok
+
+
+@pytest.mark.parametrize("change", ["input", "index"])
+def test_race_before_commit_preserves_concurrent_state(repo: Path, monkeypatch: pytest.MonkeyPatch, change: str):
+    from specify_cli.git import report_transaction
+    from specify_cli.analysis_report import check_analysis_report_current
+
+    original = report_transaction.write_analysis_report
+    target = repo / (f"kitty-specs/{SLUG}/spec.md" if change == "input" else "application.txt")
+
+    def race(**kwargs):
+        result = original(**kwargs)
+        target.write_text("concurrent content\n")
+        if change == "index":
+            git(repo, "add", "application.txt")
+        return result
+
+    monkeypatch.setattr(report_transaction, "write_analysis_report", race)
+    head = git(repo, "rev-parse", "HEAD")
+    result = invoke("--report-only")
+    assert result.exit_code == 1, result.output
+    assert json.loads(result.output)["commit_status"] == "written_uncommitted"
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert target.read_text() == "concurrent content\n"
+    assert not check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok
+    if change == "index":
+        assert git(repo, "show", ":application.txt") == b"concurrent content\n"
+
+
+def test_missing_receipt_never_qualifies_copied_report(repo: Path):
+    from specify_cli.analysis_report import check_analysis_report_current
+
+    result = invoke("--report-only")
+    assert result.exit_code == 0, result.output
+    for path in (repo / ".git/spec-kitty-report-transactions").glob("*.json"):
+        path.unlink()
+    assert not check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok
+
+
+def test_dirty_existing_report_is_preserved(repo: Path):
+    report = repo / REPORT
+    report.write_text("unreviewed analysis\n")
+    result = invoke("--report-only")
+    assert result.exit_code == 1, result.output
+    assert "DIRTY_ANALYSIS_INPUT" in result.output
+    assert report.read_text() == "unreviewed analysis\n"
+
+
+def test_global_template_requires_committed_project_override(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from specify_cli.runtime import resolver
+    from kernel.paths import get_package_asset_root
+
+    global_home = tmp_path / "global"
+    templates = global_home / "missions/software-dev/templates"
+    templates.mkdir(parents=True)
+    monkeypatch.setattr(resolver, "get_kittify_home", lambda: global_home)
+    for name in ("spec-template.md", "plan-template.md"):
+        (templates / name).write_bytes((get_package_asset_root() / "software-dev/templates" / name).read_bytes())
+    refused = invoke("--report-only")
+    assert refused.exit_code == 1, refused.output
+    assert "External mutable global template authority" in refused.output
+    assert not (repo / REPORT).exists()
+    override = repo / ".kittify/overrides/missions/software-dev/templates"
+    override.mkdir(parents=True)
+    for source in templates.iterdir():
+        (override / source.name).write_bytes(source.read_bytes())
+    git(repo, "add", ".kittify/overrides")
+    git(repo, "commit", "-qm", "pin templates")
+    accepted = invoke("--report-only")
+    assert accepted.exit_code == 0, accepted.output
