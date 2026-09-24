@@ -224,6 +224,41 @@ def test_missing_receipt_never_qualifies_copied_report(repo: Path):
     assert not check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok
 
 
+@pytest.mark.parametrize("mutation", ["qualified", "missing_receipt", "pending_receipt", "material_only"])
+def test_combined_runtime_actual_implementation_gate(repo: Path, mutation: str, capsys: pytest.CaptureFixture[str]):
+    """The lifecycle gate must consume the qualified reader from this runtime."""
+    from typer import Exit
+    from specify_cli.cli.commands.agent.workflow import _require_current_analysis_report
+
+    result = invoke("--report-only")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output)["commit_status"] == "committed"
+    mission = repo / "kitty-specs" / SLUG
+    report_bytes = (repo / REPORT).read_bytes()
+    receipts = list((repo / ".git/spec-kitty-report-transactions").glob("*.json"))
+    assert len(receipts) == 1
+    if mutation == "missing_receipt":
+        receipts[0].unlink()
+    elif mutation == "pending_receipt":
+        receipt = json.loads(receipts[0].read_text())
+        receipt["state"] = "pending"
+        receipts[0].write_text(json.dumps(receipt))
+    elif mutation == "material_only":
+        # Not one of the legacy spec/plan/tasks hashes: prove material closure.
+        charter = repo / ".kittify/charter/charter.yaml"
+        charter.write_text(charter.read_text() + "project_name: changed\n")
+        git(repo, "add", str(charter))
+        git(repo, "commit", "-qm", "change governed input")
+    if mutation == "qualified":
+        assert _require_current_analysis_report(mission, repo, SLUG) is None
+    else:
+        with pytest.raises(Exit) as exc:
+            _require_current_analysis_report(mission, repo, SLUG)
+        assert exc.value.exit_code == 1
+        assert "analysis_report_required" in capsys.readouterr().out
+    assert (repo / REPORT).read_bytes() == report_bytes
+
+
 def test_dirty_existing_report_is_preserved(repo: Path):
     report = repo / REPORT
     report.write_text("unreviewed analysis\n")
