@@ -25,6 +25,7 @@
   "purpose_context": "Enable an explicit report-only transaction on the authoritative planning checkout. Preserve unrelated staged and unstaged work, reject dirty material inputs and unsafe branch state, and report commit failures honestly. Keep the default broad dirty-tree guard and canonical artifact placement.",
   "purpose_tldr": "Record trustworthy analysis without disturbing unrelated work.",
   "slug": "analysis-report-transaction-01M38YDX",
+  "status_phase": "1",
   "target_branch": "fix/analysis-report-transaction",
   "topology": "single_branch"
 }
