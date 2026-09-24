@@ -117,3 +117,19 @@ def test_failed_commit_never_reports_success(repo: Path):
     assert payload["success"] is False
     assert payload["commit_status"] == "written_uncommitted"
     assert git(repo, "rev-parse", "HEAD") == head
+
+
+def test_post_commit_index_race_cannot_unlock_analysis(repo: Path):
+    from specify_cli.analysis_report import check_analysis_report_current
+
+    hook = repo / ".git/hooks/post-commit"
+    hook.write_text("#!/bin/sh\nprintf 'concurrent\\n' > application.txt\ngit add application.txt\n")
+    hook.chmod(0o755)
+    head = git(repo, "rev-parse", "HEAD")
+    result = invoke("--report-only")
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["commit_status"] == "committed_unqualified"
+    assert git(repo, "rev-parse", "HEAD") != head
+    assert (repo / "application.txt").read_text() == "concurrent\n"
+    assert not check_analysis_report_current(repo / "kitty-specs" / SLUG, repo).ok

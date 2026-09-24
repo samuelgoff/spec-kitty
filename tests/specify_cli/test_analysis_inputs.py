@@ -43,3 +43,17 @@ def test_declared_authority_symlink_escape_rejected(tmp_path: Path):
     (root / "authority").symlink_to(tmp_path, target_is_directory=True)
     with pytest.raises(MaterialInputError, match="symlink"):
         collect_material_inputs(root / "kitty-specs/test", root)
+
+
+def test_wp_runtime_fields_do_not_change_definition_hash(tmp_path: Path):
+    from specify_cli.analysis_inputs import collect_material_inputs
+
+    mission = tmp_path / "kitty-specs/test"
+    (mission / "tasks").mkdir(parents=True)
+    wp = mission / "tasks/WP01-test.md"
+    wp.write_text("---\nwork_package_id: WP01\nlane: planned\n---\nDefinition.\n")
+    before = collect_material_inputs(mission, tmp_path)
+    wp.write_text("---\nwork_package_id: WP01\nlane: in_progress\n---\nDefinition.\n")
+    assert collect_material_inputs(mission, tmp_path) == before
+    wp.write_text("---\nwork_package_id: WP01\nlane: in_progress\n---\nChanged definition.\n")
+    assert collect_material_inputs(mission, tmp_path) != before
