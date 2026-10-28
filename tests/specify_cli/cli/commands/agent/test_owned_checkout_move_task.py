@@ -29,24 +29,54 @@ __all__ = ["checkouts", "claim_counter"]
 pytestmark = [pytest.mark.integration, pytest.mark.git_repo]
 
 
-def test_owned_gate_baseline_reads_selected_mission_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    mission = tmp_path / "kitty-specs" / SLUG
+@pytest.mark.parametrize("receipt_budget, expected_current", [(1200, True), (300, False)])
+def test_owned_gate_baseline_reads_selected_mission_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt_budget: int, expected_current: bool) -> None:
+    primary, owned = tmp_path / "primary", tmp_path / "owned"
+    for root, budget in ((primary, 300), (owned, 1200)):
+        config = root / ".kittify" / "config.yaml"
+        config.parent.mkdir(parents=True)
+        config.write_text(f"review:\n  test_timeout_seconds: {budget}\n", encoding="utf-8")
+    mission = owned / "kitty-specs" / SLUG
     wp = mission / "tasks" / "WP01-test.md"
+    artifact = mission / "tasks" / "WP01-test" / "baseline-tests.json"
+    baseline = tasks_move_task_gates.BaselineTestResult(
+        wp_id="WP01",
+        captured_at="2026-10-28T00:00:00Z",
+        base_branch=TARGET,
+        base_commit="a" * 40,
+        test_runner="custom",
+        total=1,
+        passed=1,
+        failed=0,
+        skipped=0,
+        test_timeout_seconds=receipt_budget,
+    )
+    baseline.save(artifact)
     captured: list[Path] = []
+    real_load = tasks_move_task_gates.BaselineTestResult.load
+
+    def load(path: Path):
+        captured.append(path)
+        return real_load(path)
+
     monkeypatch.setattr(
         tasks_move_task_gates.BaselineTestResult,
         "load",
-        lambda path: captured.append(path),
+        load,
     )
     state = SimpleNamespace(
-        owned=SimpleNamespace(owned_root=tmp_path),
+        owned=SimpleNamespace(owned_root=owned),
+        repo_root=owned,
+        main_repo_root=primary,
         wp=SimpleNamespace(path=wp),
         feature_dir=mission,
     )
 
-    move_task_module._mt_resolve_gate_baseline(state)
+    result = move_task_module._mt_resolve_gate_baseline(state)
 
-    assert captured == [mission / "tasks" / "WP01-test" / "baseline-tests.json"]
+    assert captured == [artifact]
+    assert result == (baseline if expected_current else None)
+    assert artifact.exists()  # Stale evidence is retained, never selected via the primary budget.
 
 
 @pytest.fixture

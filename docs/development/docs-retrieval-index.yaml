@@ -10607,6 +10607,11 @@ pages:
     - {slug: "fields", text: "Fields", level: 2}
     - {slug: "pack-level", text: "`pack_level`", level: 2}
     - {slug: "regenerating-a-built-in-pack-s-graph", text: "Regenerating a built-in pack's graph", level: 2}
+  - path: "docs/configuration/review-test-budget.md"
+    title: "Review test execution budget"
+    divio_type: "none"
+    abstract: "Configure a bounded per-run budget for complete baseline and candidate review tests."
+    anchors: []
   - path: "docs/configuration/yaml-libraries.md"
     title: "YAML library choice: ruamel.yaml vs PyYAML"
     divio_type: "none"
@@ -14604,6 +14609,18 @@ pages:
     - {slug: "l5-worktree-aware-testing-charter-write-worktree-escape-l5-worktree-aware-testing-and-charter-write-escape", text: "L5 — Worktree-aware testing + charter-write worktree-escape {#l5-worktree-aware-testing-and-charter-write-escape}", level: 3}
     - {slug: "l6-clean-history-consolidation-via-soft-reset-l6-clean-history-soft-reset", text: "L6 — Clean-history consolidation via soft-reset {#l6-clean-history-soft-reset}", level: 3}
     - {slug: "related-tickets-validated-2026-09-21", text: "Related tickets (validated 2026-09-21)", level: 2}
+  - path: "docs/plans/engineering-notes/2026-10-28-review-test-budget.md"
+    title: "Review test budget repair"
+    divio_type: "none"
+    abstract: "Implementation decisions, validation evidence and remaining release obligations for the review test budget repair."
+    anchors:
+    - {slug: "objective-and-owner", text: "Objective and owner", level: 2}
+    - {slug: "ux-findings", text: "UX findings", level: 2}
+    - {slug: "decisions", text: "Decisions", level: 2}
+    - {slug: "validation-and-outcomes", text: "Validation and outcomes", level: 2}
+    - {slug: "known-limitations-and-delivery", text: "Known limitations and delivery", level: 2}
+    - {slug: "resource-custody-and-cleanup", text: "Resource custody and cleanup", level: 2}
+    - {slug: "ci-feedback-and-corrective-scope", text: "CI feedback and corrective scope", level: 2}
   - path: "docs/plans/engineering-notes/2173-infra-logic-separation/00-SYNTHESIS.md"
     title: "Infra-to-logic separation (#2173) — investigation synthesis"
     divio_type: "none"
