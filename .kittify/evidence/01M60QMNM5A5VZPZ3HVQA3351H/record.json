@@ -1,0 +1,8 @@
+{
+  "event": "completed",
+  "invocation_id": "01M60QMNM5A5VZPZ3HVQA3351H",
+  "completed_at": "2026-10-28T08:39:08.405759+00:00",
+  "outcome": "done",
+  "closed_by": "agent",
+  "evidence_ref": "<contributor-workdir>/spec-kitty-review-timeout/report.md"
+}
