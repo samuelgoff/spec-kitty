@@ -1,0 +1,8 @@
+{
+  "event": "completed",
+  "invocation_id": "01M60XZR3NH3GMCW0FFC71PVN6",
+  "completed_at": "2026-10-28T11:29:39.231648+00:00",
+  "outcome": "done",
+  "closed_by": "agent",
+  "evidence_ref": "<contributor-workdir>/spec-kitty-review-timeout/ci-rework/independent-review/verdict.json"
+}
