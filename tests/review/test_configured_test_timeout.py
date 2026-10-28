@@ -185,7 +185,8 @@ def test_transition_uses_planning_authority_not_execution_checkout(tmp_path: Pat
     assert not (execution / "WRONG_AUTHORITY").exists()
 
 
-def test_transition_invalid_budget_cannot_fail_open_before_capture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("owned_mode", [False, True])
+def test_transition_invalid_budget_cannot_fail_open_before_capture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, owned_mode: bool) -> None:
     from types import SimpleNamespace
 
     from specify_cli.cli.commands.agent import tasks_move_task_gates as gates
@@ -193,7 +194,12 @@ def test_transition_invalid_budget_cannot_fail_open_before_capture(tmp_path: Pat
     from specify_cli.status import Lane
 
     repo = _repo(tmp_path, timeout=0)
-    state = SimpleNamespace(target_lane=Lane.FOR_REVIEW, owned=None, main_repo_root=repo)
+    primary = tmp_path / "valid-primary"
+    (primary / ".kittify").mkdir(parents=True)
+    (primary / ".kittify/config.yaml").write_text("review:\n  test_timeout_seconds: 1200\n")
+    state = SimpleNamespace(
+        target_lane=Lane.FOR_REVIEW, repo_root=repo, owned=SimpleNamespace(owned_root=repo) if owned_mode else None, main_repo_root=primary if owned_mode else repo
+    )
     monkeypatch.setattr(gates, "_mt_pre_review_gate_skip_reason", lambda _st: None)
 
     def forbidden(_st):
@@ -242,7 +248,6 @@ def test_owned_lazy_capture_uses_owned_command_and_budget(tmp_path: Path, monkey
     from types import SimpleNamespace
 
     from specify_cli.cli.commands.agent import tasks_move_task_gates as gates
-    from specify_cli.cli.commands.agent import workflow_executor
     from specify_cli.review.baseline import BaselineTestResult
     from specify_cli.status import Lane
 
@@ -252,7 +257,7 @@ def test_owned_lazy_capture_uses_owned_command_and_budget(tmp_path: Path, monkey
     selected_marker = tmp_path / "owned-command-ran"
     primary_marker = tmp_path / "primary-command-ran"
     primary_config = primary / ".kittify/config.yaml"
-    primary_config.write_text(primary_config.read_text().replace("test_timeout_seconds: 300", f"test_timeout_seconds: {primary_budget}") + f"# primary\n")
+    primary_config.write_text(primary_config.read_text().replace("test_timeout_seconds: 300", f"test_timeout_seconds: {primary_budget}") + "# primary\n")
     primary_config.write_text(primary_config.read_text().replace("suite.py {output_file}", f"suite.py {{output_file}}; touch {primary_marker}"))
     owned_config = owned / ".kittify/config.yaml"
     owned_config.write_text(
@@ -264,14 +269,21 @@ def test_owned_lazy_capture_uses_owned_command_and_budget(tmp_path: Path, monkey
     artifact = feature / "tasks/WP01/baseline-tests.json"
     monkeypatch.setattr(gates, "_mt_baseline_artifact_location", lambda _st: (feature, "WP01", artifact))
     monkeypatch.setattr(gates, "_mt_baseline_capture_ref", lambda _st, _ref: "main")
-    # This fixture isolates configuration selection; publication placement is a separate seam.
-    monkeypatch.setattr(workflow_executor, "_baseline_artifact_needs_commit", lambda *_args: False)
+    from mission_runtime import OwnedCheckout
+    from mission_runtime.context import MissionTopology
+
+    feature.mkdir(parents=True)
+    owned_fact = OwnedCheckout._mint(
+        repository_root=primary, owned_root=owned, mission_dir=feature, mission_slug="budget", topology=MissionTopology.SINGLE_BRANCH, write_branch="owned-lane"
+    )
+    primary_before = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=primary)
+    owned_before = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=owned)
     state = SimpleNamespace(
         old_lane=Lane.IN_PROGRESS,
         target_lane=Lane.FOR_REVIEW,
         main_repo_root=primary,
         repo_root=owned,
-        owned=SimpleNamespace(owned_root=owned),
+        owned=owned_fact,
         task_id="WP01",
         mission_slug="budget",
         review_base_ref=None,
@@ -284,5 +296,11 @@ def test_owned_lazy_capture_uses_owned_command_and_budget(tmp_path: Path, monkey
         assert result is not None and result.test_timeout_seconds == 1200
         assert selected_marker.exists()
         assert not primary_marker.exists()
+        assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=primary) == primary_before
+        assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=owned) != owned_before
+        assert (
+            subprocess.check_output(["git", "show", "--format=", "--name-only", "HEAD"], cwd=owned, text=True).strip()
+            == "kitty-specs/budget/tasks/WP01/baseline-tests.json"
+        )
     finally:
         subprocess.run(["git", "worktree", "remove", "--force", str(owned)], cwd=primary, check=True)

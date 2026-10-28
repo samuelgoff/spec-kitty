@@ -73,6 +73,7 @@ class TransitionGateContext:
     from_lane: Lane
     to_lane: Lane
     status_observer: GateStatusObserver | None = None
+    test_timeout_seconds: int | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,7 @@ def _spec_kitty_pre_review_handler(ctx: TransitionGateContext) -> GateVerdict:
         baseline=ctx.baseline,
         scope_source=ctx.scope_source,
         status_observer=ctx.status_observer,
+        timeout=ctx.test_timeout_seconds,
     )
 
 
