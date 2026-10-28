@@ -52,6 +52,7 @@ from kernel.locks import LockAcquireTimeout, LockNotAcquired, machine_file_lock
 from kernel.paths import is_windows, to_posix
 from specify_cli.paths import get_runtime_root
 from specify_cli.review._interpreter import resolve_pytest_command
+from specify_cli.review.test_timeout import resolve_review_test_timeout
 from specify_cli.review.baseline import (
     CAPTURE_BASELINE_TIMEOUT_SECONDS,
     BaselineFailure,
@@ -872,7 +873,7 @@ def evaluate_with_scope(
     *,
     repo_root: Path,
     baseline: BaselineTestResult | None,
-    timeout: int = _DEFAULT_HEAD_RUN_TIMEOUT,
+    timeout: int | None = None,
     progress_callback: _ProgressCallback | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     wait: _ProcessWait = _default_process_wait,
@@ -913,6 +914,7 @@ def evaluate_with_scope(
     injects a ``scope_source``, by design, since an override IS the test
     scope.
     """
+    timeout = resolve_review_test_timeout(repo_root, timeout)
     assessment = assess_scope_budget(scope.test_targets, timeout)
     if status_observer is not None:
         status_observer(ScopeAssessed(assessment=assessment))
@@ -1070,7 +1072,7 @@ def evaluate_pre_review_gate(
     *,
     repo_root: Path,
     baseline: BaselineTestResult | None,
-    timeout: int = _DEFAULT_HEAD_RUN_TIMEOUT,
+    timeout: int | None = None,
     progress_callback: _ProgressCallback | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     wait: _ProcessWait = _default_process_wait,

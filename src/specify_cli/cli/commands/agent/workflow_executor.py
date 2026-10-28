@@ -1387,6 +1387,7 @@ def capture_and_commit_baseline(
     wp_slug: str,
     main_repo_root: Path,
     quiet: bool = False,
+    owned: OwnedCheckout | None = None,
 ) -> None:
     """Capture (one-time, cached) baseline test results and best-effort commit
     the baseline artifact.
@@ -1412,7 +1413,8 @@ def capture_and_commit_baseline(
     ``workspace_path`` is used ONLY to locate the repository root (walking up to
     the nearest ``.git``) from which the detached base-branch worktree is
     created; the suite never runs in it. The for_review caller passes
-    ``st.main_repo_root``."""
+    ``st.main_repo_root``. ``owned`` selects command/config authority and the
+    existing owned placement/commit seam without changing that Git identity."""
     from specify_cli.core.commit_guard import GuardCapability
 
     w = _wf()
@@ -1422,6 +1424,9 @@ def capture_and_commit_baseline(
         from specify_cli.cli.console import console
         from specify_cli.review.baseline import capture_baseline
         from specify_cli.review.scope_source import resolve_scope_source
+        from specify_cli.review.test_timeout import resolve_review_test_timeout
+
+        authority_root = owned.owned_root if owned is not None else main_repo_root
 
         # T015 (mission scopesource-gate-followup-01KY6S9P, FR-011/FR-014):
         # inject the shared factory so baseline capture activates
@@ -1429,8 +1434,8 @@ def capture_and_commit_baseline(
         # test_command()/parse_results() authority the pre-review head run
         # uses. The factory resolves only ``DeclaredCommandScopeSource`` after
         # the workflow-derived source was retired. Resolved
-        # against the SAME ``main_repo_root`` the baseline artifact placement
-        # below already uses -- not a freshly reconstructed root.
+        # against the validated owned root when selected; the primary is
+        # a Git repository identity, not the owned command/config authority.
         baseline = capture_baseline(
             worktree_path=workspace_path,
             base_branch=target_branch,
@@ -1438,7 +1443,8 @@ def capture_and_commit_baseline(
             mission_slug=mission_slug,
             feature_dir=feature_dir,
             wp_slug=wp_slug,
-            scope_source=resolve_scope_source(main_repo_root),
+            scope_source=resolve_scope_source(authority_root),
+            timeout=resolve_review_test_timeout(authority_root),
         )
         # Rich markup only renders through the CLI console seam; the builtin
         # print emitted the tags literally (#4163).
@@ -1468,7 +1474,7 @@ def capture_and_commit_baseline(
             baseline is not None
             and baseline.failed != -1
             and baseline_artifact.exists()
-            and _baseline_artifact_needs_commit(main_repo_root, baseline_artifact)
+            and _baseline_artifact_needs_commit(authority_root, baseline_artifact)
         ):
             # Mechanical WP06 pre-step migration.
             try:
@@ -1480,18 +1486,24 @@ def capture_and_commit_baseline(
                 # no protected-branch flow, so a protected target is
                 # refused — the best-effort handler below logs the
                 # refusal (FR-008).
-                baseline_placement = w._resolve_workflow_placement(
-                    repo_root=main_repo_root,
-                    mission_slug=mission_slug,
-                    kind=MissionArtifactKind.WORK_PACKAGE_TASK,
-                )
+                if owned is not None:
+                    baseline_placement = placement_seam(
+                        main_repo_root, mission_slug, owned=owned,
+                    ).write_target(MissionArtifactKind.WORK_PACKAGE_TASK)
+                else:
+                    baseline_placement = w._resolve_workflow_placement(
+                        repo_root=main_repo_root,
+                        mission_slug=mission_slug,
+                        kind=MissionArtifactKind.WORK_PACKAGE_TASK,
+                    )
                 w.safe_commit(
                     repo_root=main_repo_root,
-                    worktree_root=main_repo_root,
+                    worktree_root=authority_root,
                     target=baseline_placement,
                     message=f"chore: Capture baseline tests for {normalized_wp_id}",
                     paths=(baseline_artifact,),
                     capability=GuardCapability.STANDARD,
+                    **({"owned": owned} if owned is not None else {}),
                 )
             except Exception as bl_commit_exc:  # noqa: BLE001 — best-effort
                 # #2896: surface the real refusal reason visibly, not only to

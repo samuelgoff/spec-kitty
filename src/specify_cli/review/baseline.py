@@ -31,6 +31,11 @@ from typing import Any
 
 from specify_cli.consolidation.workspace import remove_scratch_worktree
 from specify_cli.configured_command import ConfiguredCommandUnsupported, run_configured_command_template
+from specify_cli.review.test_timeout import (
+    DEFAULT_TEST_TIMEOUT_SECONDS,
+    resolve_review_test_timeout,
+    validate_review_test_timeout,
+)
 from specify_cli.review.scope_source import (
     UNKNOWN_SOURCE_IDENTITY,
     RawRunResult,
@@ -45,7 +50,7 @@ logger = logging.getLogger(__name__)
 # (``pre_review_gate._DEFAULT_HEAD_RUN_TIMEOUT``) so the two mirror each other
 # by construction rather than by a hand-copied literal that could silently
 # diverge when one is retuned.
-CAPTURE_BASELINE_TIMEOUT_SECONDS = 300  # 5 minutes
+CAPTURE_BASELINE_TIMEOUT_SECONDS = DEFAULT_TEST_TIMEOUT_SECONDS  # 5 minutes
 
 
 class ReviewBaselineReadError(GuardedReadError, ValueError):
@@ -101,6 +106,7 @@ class BaselineTestResult:
     source_identity: str = UNKNOWN_SOURCE_IDENTITY  # FR-009: "<ScopeSource class>/<parse-mode>",
                                        # or UNKNOWN_SOURCE_IDENTITY for a straddling-upgrade
                                        # artifact captured before this field existed.
+    test_timeout_seconds: int = DEFAULT_TEST_TIMEOUT_SECONDS
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -115,6 +121,7 @@ class BaselineTestResult:
             "skipped": self.skipped,
             "failures": [f.to_dict() for f in self.failures],
             "source_identity": self.source_identity,
+            "test_timeout_seconds": self.test_timeout_seconds,
         }
 
     @classmethod
@@ -136,6 +143,10 @@ class BaselineTestResult:
             # makes WP04's head-side compare emit UNVERIFIED_BASELINE at diff
             # time, never a spurious SOURCE_MISMATCH.
             source_identity=data.get("source_identity", UNKNOWN_SOURCE_IDENTITY),
+            # Earlier releases hardcoded 300 for every capture.
+            test_timeout_seconds=validate_review_test_timeout(
+                data.get("test_timeout_seconds", DEFAULT_TEST_TIMEOUT_SECONDS)
+            ),
         )
 
     @classmethod
@@ -304,6 +315,7 @@ def capture_baseline(
     wp_slug: str,
     test_command: str | None = None,
     scope_source: ScopeSource | None = None,
+    timeout: int | None = None,
 ) -> BaselineTestResult | None:
     """Capture baseline test results for a work package on its base branch.
 
@@ -324,6 +336,8 @@ def capture_baseline(
         wp_slug: Slug of the WP task file (e.g. "WP04-baseline-test-capture").
         test_command: Optional override for the test command.  If None, reads
             from config; without config, baseline capture is skipped.
+        timeout: Optional API override of ``review.test_timeout_seconds``; both
+            capture paths use the same budget and cache only matching receipts.
         scope_source: Optional injected ``ScopeSource`` (mission
             ``doctrine-controlled-transition-gates-01KY51Z7`` WP03, FR-011).
             When provided, baseline capture routes through its
@@ -337,17 +351,18 @@ def capture_baseline(
     artifact_dir = feature_dir / "tasks" / wp_slug
     artifact_path = artifact_dir / "baseline-tests.json"
 
-    # Return cached result if it already exists (idempotent)
-    cached = BaselineTestResult.load(artifact_path)
-    if cached is not None:
-        logger.info("Baseline already captured for %s — skipping re-capture.", wp_id)
-        return cached
-
     # Locate repo root (parent of .git)
     repo_root = _find_repo_root(worktree_path)
     if repo_root is None:
         logger.warning("Could not find repo root from %s; skipping baseline capture.", worktree_path)
         return _make_sentinel(wp_id, base_branch, "")
+
+    timeout = resolve_review_test_timeout(repo_root, timeout)
+    cached = BaselineTestResult.load(artifact_path)
+    if cached is not None and cached.test_timeout_seconds == timeout:
+        logger.info("Baseline already captured for %s at the same budget — skipping re-capture.", wp_id)
+        return cached
+
 
     if scope_source is not None:
         return _capture_baseline_via_scope_source(
@@ -356,6 +371,7 @@ def capture_baseline(
             base_branch=base_branch,
             wp_id=wp_id,
             artifact_path=artifact_path,
+            timeout=timeout,
         )
 
     return _capture_baseline_via_config(
@@ -364,6 +380,7 @@ def capture_baseline(
         wp_id=wp_id,
         test_command=test_command,
         artifact_path=artifact_path,
+        timeout=timeout,
     )
 
 
@@ -374,6 +391,7 @@ def _capture_baseline_via_config(
     wp_id: str,
     test_command: str | None,
     artifact_path: Path,
+    timeout: int = CAPTURE_BASELINE_TIMEOUT_SECONDS,
 ) -> BaselineTestResult | None:
     """The original, config-driven capture body (unchanged behaviour):
     resolves ``review.test_command`` from ``.kittify/config.yaml`` (unless
@@ -420,7 +438,7 @@ def _capture_baseline_via_config(
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=CAPTURE_BASELINE_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
         except ConfiguredCommandUnsupported as exc:
             logger.warning("Test command is not supported on this platform: %s", exc)
@@ -456,6 +474,7 @@ def _capture_baseline_via_config(
         failed=failed,
         skipped=skipped,
         failures=tuple(failures),
+        test_timeout_seconds=timeout,
     )
     result.save(artifact_path)
     return result
@@ -486,7 +505,9 @@ def _extract_junit_output_path(command: Sequence[str]) -> Path | None:
     return None
 
 
-def _run_command_for_baseline(command: list[str], *, cwd: Path) -> RawRunResult:
+def _run_command_for_baseline(
+    command: list[str], *, cwd: Path, timeout: int = CAPTURE_BASELINE_TIMEOUT_SECONDS,
+) -> RawRunResult:
     """Run a ``ScopeSource``-resolved command for baseline capture, producing
     a :class:`RawRunResult` — the same UNPARSED shape the pre-review head
     run produces (FR-011 symmetry) — for ``scope_source.parse_results``.
@@ -533,7 +554,7 @@ def _run_command_for_baseline(command: list[str], *, cwd: Path) -> RawRunResult:
     state, raw, error = _run_raw_command(
         command,
         repo_root=cwd,
-        timeout=CAPTURE_BASELINE_TIMEOUT_SECONDS,
+        timeout=timeout,
         progress_callback=None,
         monotonic=time.monotonic,
         wait=_default_process_wait,
@@ -543,7 +564,7 @@ def _run_command_for_baseline(command: list[str], *, cwd: Path) -> RawRunResult:
         return RawRunResult(
             returncode=-1,
             stdout="",
-            stderr=f"baseline command timed out after {CAPTURE_BASELINE_TIMEOUT_SECONDS}s",
+            stderr=f"baseline command timed out after {timeout}s",
             output_artifact_path=junit_path,
         )
     if state is HeadRunState.CANCELLED:
@@ -571,6 +592,7 @@ def _capture_baseline_via_scope_source(
     base_branch: str,
     wp_id: str,
     artifact_path: Path,
+    timeout: int = CAPTURE_BASELINE_TIMEOUT_SECONDS,
 ) -> BaselineTestResult | None:
     """FR-011: baseline capture via the injected ``ScopeSource`` — the SAME
     ``test_command()``/``parse_results()`` authority the pre-review head run
@@ -603,7 +625,7 @@ def _capture_baseline_via_scope_source(
     with _baseline_worktree(repo_root, base_branch) as tmp_worktree:
         if tmp_worktree is None:
             return _make_sentinel(wp_id, base_branch, base_commit)
-        raw = _run_command_for_baseline(command, cwd=tmp_worktree)
+        raw = _run_command_for_baseline(command, cwd=tmp_worktree, timeout=timeout)
         failures = tuple(scope_source.parse_results(raw))
         source_identity = scope_source_identity(scope_source, raw)
 
@@ -650,6 +672,7 @@ def _capture_baseline_via_scope_source(
         skipped=0,
         failures=failures,
         source_identity=source_identity,
+        test_timeout_seconds=timeout,
     )
     result.save(artifact_path)
     return result

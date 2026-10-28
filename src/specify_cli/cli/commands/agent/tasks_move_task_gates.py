@@ -46,6 +46,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 import typer
 
+from specify_cli.review.test_timeout import resolve_review_test_timeout
+
 if TYPE_CHECKING:
     from specify_cli.cli.commands.agent.tasks_move_task import _MoveTaskState
     from collections.abc import Sequence
@@ -347,6 +349,7 @@ def _mt_pre_review_gate_with_override_scope(
     *,
     repo_root: Path,
     baseline: BaselineTestResult | None,
+    timeout: int | None = None,
     progress_callback: Callable[[float], None] | None = None,
     status_observer: pre_review_gate.GateStatusObserver | None = None,
 ) -> pre_review_gate.GateVerdict:
@@ -381,6 +384,7 @@ def _mt_pre_review_gate_with_override_scope(
         )
     return pre_review_gate.evaluate_with_scope(
         scope,
+        timeout=timeout,
         repo_root=repo_root,
         baseline=baseline,
         progress_callback=progress_callback,
@@ -747,7 +751,11 @@ def _mt_resolve_gate_baseline(st: _MoveTaskState) -> BaselineTestResult | None:
     by the single :func:`_mt_baseline_artifact_location` authority.
     """
     _baseline_dir, _wp_slug, artifact_path = _mt_baseline_artifact_location(st)
-    return BaselineTestResult.load(artifact_path)
+    baseline = BaselineTestResult.load(artifact_path)
+    authority_root = st.repo_root if st.owned is not None else st.main_repo_root
+    if baseline is not None and baseline.test_timeout_seconds != resolve_review_test_timeout(authority_root):
+        return None  # A failed recapture must never resurrect a stale clean receipt.
+    return baseline
 
 
 def _mt_baseline_capture_ref(st: _MoveTaskState, base_ref: str) -> str:
@@ -814,7 +822,9 @@ def _mt_capture_baseline_if_missing(st: _MoveTaskState) -> None:
     try:
         baseline_dir, wp_slug, artifact_path = _mt_baseline_artifact_location(st)
         if artifact_path.exists():
-            return
+            baseline = _mt_resolve_gate_baseline(st)
+            if baseline is not None:
+                return
         from specify_cli.cli.commands.agent.workflow_executor import capture_and_commit_baseline
 
         capture_and_commit_baseline(
@@ -828,6 +838,7 @@ def _mt_capture_baseline_if_missing(st: _MoveTaskState) -> None:
             # #6062: never let a baseline notice corrupt a --json move-task envelope;
             # the move-task path emits console only when not json_output.
             quiet=st.json_output,
+            owned=st.owned,
         )
     except Exception as exc:  # noqa: BLE001 — #6062 fail-open: a capture-prep fault must never refuse the for_review move (same contract as the LOAD-side three-catch)
         logger.warning(
@@ -853,6 +864,7 @@ def _mt_build_transition_gate_context(
         from_lane=st.old_lane,
         to_lane=st.target_lane,
         status_observer=status_observer,
+        test_timeout_seconds=resolve_review_test_timeout(inputs.scope_source_root),
     )
 
 
@@ -986,6 +998,7 @@ def _mt_collect_transition_gate_verdicts(
                 lambda: _mt_pre_review_gate_with_override_scope(
                     override_targets,
                     repo_root=inputs.gate_repo_root,
+                    timeout=resolve_review_test_timeout(inputs.scope_source_root),
                     baseline=_mt_resolve_gate_baseline(st),
                     status_observer=status_observer,
                 ),
@@ -1210,6 +1223,10 @@ def _mt_run_transition_gates(st: _MoveTaskState) -> None:
     if skip_reason is not None:
         _mt_emit_skipped_gate(st, _tasks, skip_reason)
         return
+
+    # Invalid declared budgets are configuration errors, not fail-open handler faults.
+    # Validate before either subprocess and before the broad handler exception seam.
+    resolve_review_test_timeout(st.repo_root if st.owned is not None else st.main_repo_root)
 
     # #6062: lazily capture the baseline here (capture-if-missing) now that the
     # claim path no longer does — BEFORE the gate below loads it. Idempotent and
