@@ -1,3 +1,12 @@
+---
+title: Review test budget repair
+description: Implementation decisions, validation evidence and remaining release obligations for the review test budget repair.
+doc_status: point_in_time
+updated: '2026-10-28'
+audience: docs/context/audience/internal/maintainer.md
+related:
+- docs/configuration/review-test-budget.md
+---
 # Review test budget repair
 
 ## Objective and owner
@@ -62,3 +71,19 @@ pytest caches support validation without changing shared installs. Test subproce
 use existing group cleanup and joined test completion. External receipts retain
 runtime identity, red/green output, candidate hashes, measured sizes and retained
 resource obligations. No shared cache or other owner's checkout is pruned.
+
+## CI feedback and corrective scope
+
+PR #6747's first CI run found three documentation failures and one owned-checkout
+fixture failure despite the earlier local passes. The exact four cases were
+reproduced on the published source before this correction. Preserve those failed
+receipts; they do not qualify this amended candidate.
+
+The dated implementation record now lives in the existing engineering-notes
+section with required metadata. The retrieval index is regenerated using its
+canonical generator; structural validators remain unchanged. The owned fixture
+now supplies the selected repository root used by the real move-task state and
+checks actual receipt and budget selection against a distinct primary root.
+No production fallback or weakened authority check is added. Changed-input checks
+and independent review remain mandatory; upstream release and installed runtime
+adoption are still separate obligations.
