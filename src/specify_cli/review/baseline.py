@@ -382,7 +382,6 @@ def capture_baseline(
         logger.info("Baseline already captured for %s at the same budget — skipping re-capture.", wp_id)
         return cached
 
-
     if scope_source is not None:
         return _capture_baseline_via_scope_source(
             scope_source,
