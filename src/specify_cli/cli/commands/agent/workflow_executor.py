@@ -1388,6 +1388,7 @@ def capture_and_commit_baseline(
     main_repo_root: Path,
     quiet: bool = False,
     owned: OwnedCheckout | None = None,
+    test_timeout: int | None = None,
 ) -> None:
     """Capture (one-time, cached) baseline test results and best-effort commit
     the baseline artifact.
@@ -1414,7 +1415,9 @@ def capture_and_commit_baseline(
     the nearest ``.git``) from which the detached base-branch worktree is
     created; the suite never runs in it. The for_review caller passes
     ``st.main_repo_root``. ``owned`` selects command/config authority and the
-    existing owned placement/commit seam without changing that Git identity."""
+    existing owned placement/commit seam without changing that Git identity.
+    ``test_timeout`` is the transition's already-resolved review budget; when
+    omitted it is resolved from the same ``authority_root``."""
     from specify_cli.core.commit_guard import GuardCapability
 
     w = _wf()
@@ -1444,7 +1447,7 @@ def capture_and_commit_baseline(
             feature_dir=feature_dir,
             wp_slug=wp_slug,
             scope_source=resolve_scope_source(authority_root),
-            timeout=resolve_review_test_timeout(authority_root),
+            timeout=test_timeout if test_timeout is not None else resolve_review_test_timeout(authority_root),
         )
         # Rich markup only renders through the CLI console seam; the builtin
         # print emitted the tags literally (#4163).

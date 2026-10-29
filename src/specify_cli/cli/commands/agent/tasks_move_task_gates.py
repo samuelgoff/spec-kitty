@@ -658,6 +658,22 @@ def _mt_config_authority_root(st: _MoveTaskState) -> Path:
     return root
 
 
+def _mt_review_test_timeout(st: _MoveTaskState) -> int:
+    """The review test budget, resolved once per transition and memoised on ``st``.
+
+    Baseline capture, the baseline-receipt match and the head run all read this
+    value, so a config edit mid-transition cannot give them different budgets.
+    The first call (pre-validation, before the fail-open seams) raises
+    ``InvalidReviewTestTimeout`` for an invalid declaration.
+    """
+    # ``getattr``: gate tests drive these helpers with a bare ``SimpleNamespace`` state.
+    cached: int | None = getattr(st, "review_test_timeout", None)
+    if cached is None:
+        cached = resolve_review_test_timeout(_mt_config_authority_root(st))
+        st.review_test_timeout = cached
+    return cached
+
+
 def _mt_warn_pre_review_test_command_deprecated(main_repo_root: Path) -> None:
     """T043 (FR-011): one-time deprecation warning for ``review.pre_review_test_command``.
 
@@ -766,7 +782,7 @@ def _mt_resolve_gate_baseline(st: _MoveTaskState) -> BaselineTestResult | None:
     """
     _baseline_dir, _wp_slug, artifact_path = _mt_baseline_artifact_location(st)
     baseline = BaselineTestResult.load(artifact_path)
-    if baseline is not None and baseline.test_timeout_seconds != resolve_review_test_timeout(_mt_config_authority_root(st)):
+    if baseline is not None and baseline.test_timeout_seconds != _mt_review_test_timeout(st):
         return None  # A failed recapture must never resurrect a stale clean receipt.
     return baseline
 
@@ -852,6 +868,7 @@ def _mt_capture_baseline_if_missing(st: _MoveTaskState) -> None:
             # the move-task path emits console only when not json_output.
             quiet=st.json_output,
             owned=st.owned,
+            test_timeout=_mt_review_test_timeout(st),
         )
     except Exception as exc:  # noqa: BLE001 — #6062 fail-open: a capture-prep fault must never refuse the for_review move (same contract as the LOAD-side three-catch)
         logger.warning(
@@ -877,7 +894,7 @@ def _mt_build_transition_gate_context(
         from_lane=st.old_lane,
         to_lane=st.target_lane,
         status_observer=status_observer,
-        test_timeout_seconds=resolve_review_test_timeout(inputs.scope_source_root),
+        test_timeout_seconds=_mt_review_test_timeout(st),
     )
 
 
@@ -1011,7 +1028,7 @@ def _mt_collect_transition_gate_verdicts(
                 lambda: _mt_pre_review_gate_with_override_scope(
                     override_targets,
                     repo_root=inputs.gate_repo_root,
-                    timeout=resolve_review_test_timeout(inputs.scope_source_root),
+                    timeout=_mt_review_test_timeout(st),
                     baseline=_mt_resolve_gate_baseline(st),
                     status_observer=status_observer,
                 ),
@@ -1239,7 +1256,7 @@ def _mt_run_transition_gates(st: _MoveTaskState) -> None:
 
     # Invalid declared budgets are configuration errors, not fail-open handler faults.
     # Validate before either subprocess and before the broad handler exception seam.
-    resolve_review_test_timeout(_mt_config_authority_root(st))
+    _mt_review_test_timeout(st)
 
     # #6062: lazily capture the baseline here (capture-if-missing) now that the
     # claim path no longer does — BEFORE the gate below loads it. Idempotent and
