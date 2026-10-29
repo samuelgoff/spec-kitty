@@ -121,6 +121,7 @@ def test_short_baseline_budget_is_unknown_not_clean(tmp_path: Path) -> None:
     repo = _repo(tmp_path, timeout=1, sleep=2)
     result = _capture(repo)
     assert result is not None and result.failed != 0
+    assert result.test_timeout_seconds == 1
 
 
 def test_configured_budget_does_not_suppress_real_failure(tmp_path: Path) -> None:
