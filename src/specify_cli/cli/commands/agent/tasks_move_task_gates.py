@@ -643,6 +643,21 @@ class _TransitionGateEffect:
     should_exit: bool
 
 
+def _mt_config_authority_root(st: _MoveTaskState) -> Path:
+    """Root that owns command/config authority for this transition.
+
+    The validated owned checkout root when one is selected, otherwise the
+    primary repository root. Single source of this rule for the gate bindings,
+    the review-budget resolution and scope selection (the executor's
+    ``capture_and_commit_baseline`` derives the same value from
+    ``owned.owned_root``).
+    """
+    # Annotated local: ``owned_root`` surfaces as ``Any`` under this module's
+    # ``follow_imports = "skip"``.
+    root: Path = st.owned.owned_root if st.owned is not None else st.main_repo_root
+    return root
+
+
 def _mt_warn_pre_review_test_command_deprecated(main_repo_root: Path) -> None:
     """T043 (FR-011): one-time deprecation warning for ``review.pre_review_test_command``.
 
@@ -703,8 +718,7 @@ def _mt_resolve_active_gate_bindings(st: _MoveTaskState) -> GateBindingResolutio
         owned=st.owned,
     ).read_dir(MissionArtifactKind.PRIMARY_METADATA)
     mission = resolve_mission_type(st, feature_dir=identity_dir)
-    operation_root = st.owned.owned_root if st.owned is not None else st.main_repo_root
-    return resolve_gate_bindings_for_transition(operation_root, mission, edge_key)
+    return resolve_gate_bindings_for_transition(_mt_config_authority_root(st), mission, edge_key)
 
 
 def _baseline_artifact_path(baseline_dir: Path, wp_slug: str) -> Path:
@@ -752,8 +766,7 @@ def _mt_resolve_gate_baseline(st: _MoveTaskState) -> BaselineTestResult | None:
     """
     _baseline_dir, _wp_slug, artifact_path = _mt_baseline_artifact_location(st)
     baseline = BaselineTestResult.load(artifact_path)
-    authority_root = st.repo_root if st.owned is not None else st.main_repo_root
-    if baseline is not None and baseline.test_timeout_seconds != resolve_review_test_timeout(authority_root):
+    if baseline is not None and baseline.test_timeout_seconds != resolve_review_test_timeout(_mt_config_authority_root(st)):
         return None  # A failed recapture must never resurrect a stale clean receipt.
     return baseline
 
@@ -1038,7 +1051,7 @@ def _mt_resolve_transition_gate_inputs(
         worktree_path=worktree_path,
         changed_files=changed_files,
         gate_repo_root=worktree_path or st.main_repo_root,
-        scope_source_root=st.repo_root if st.owned is not None else st.main_repo_root,
+        scope_source_root=_mt_config_authority_root(st),
     )
     return inputs, dirty_before
 
@@ -1226,7 +1239,7 @@ def _mt_run_transition_gates(st: _MoveTaskState) -> None:
 
     # Invalid declared budgets are configuration errors, not fail-open handler faults.
     # Validate before either subprocess and before the broad handler exception seam.
-    resolve_review_test_timeout(st.repo_root if st.owned is not None else st.main_repo_root)
+    resolve_review_test_timeout(_mt_config_authority_root(st))
 
     # #6062: lazily capture the baseline here (capture-if-missing) now that the
     # claim path no longer does — BEFORE the gate below loads it. Idempotent and

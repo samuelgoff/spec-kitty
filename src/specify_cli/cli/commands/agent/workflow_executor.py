@@ -1503,7 +1503,7 @@ def capture_and_commit_baseline(
                     message=f"chore: Capture baseline tests for {normalized_wp_id}",
                     paths=(baseline_artifact,),
                     capability=GuardCapability.STANDARD,
-                    **({"owned": owned} if owned is not None else {}),
+                    owned=owned,
                 )
             except Exception as bl_commit_exc:  # noqa: BLE001 — best-effort
                 # #2896: surface the real refusal reason visibly, not only to
