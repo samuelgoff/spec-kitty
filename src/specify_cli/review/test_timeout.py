@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 DEFAULT_TEST_TIMEOUT_SECONDS = 300
 MAX_TEST_TIMEOUT_SECONDS = 86_400
@@ -26,7 +27,10 @@ def resolve_review_test_timeout(repo_root: Path, override: int | None = None) ->
     value: object = override
     if override is None:
         path = repo_root / ".kittify" / "config.yaml"
-        config = YAML(typ="safe").load(path) if path.exists() else None
+        try:
+            config = YAML(typ="safe").load(path) if path.exists() else None
+        except (YAMLError, OSError, UnicodeDecodeError) as exc:
+            raise InvalidReviewTestTimeout(f"Cannot read review.test_timeout_seconds from {path}: {exc}") from exc
         if config is not None and not isinstance(config, Mapping):
             raise InvalidReviewTestTimeout("Review configuration must be a mapping")
         review = (config or {}).get("review")
