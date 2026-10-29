@@ -42,8 +42,12 @@ existing baseline policy.
 Budget the outer invocation for **both** test runs, process cleanup and other gate
 work. For example, two 1200-second legs can require more than 2400 seconds overall.
 The candidate's machine lock still has its independent short acquisition budget;
-baseline capture still bypasses that lock. Timeout continues to terminate and join
-the command's process group before releasing its temporary workspace.
+baseline capture still bypasses that lock. On timeout, a
+declared command (`review.test_command` resolved through the scope source, the
+normal path) terminates and joins its whole process group before the temporary
+workspace is released. The legacy config-driven capture path, used only when no
+scope source is supplied, bounds the run with the same budget but stops only the
+direct shell child.
 
 This source change requires a release containing it. Installing an older published
 CLI does not adopt this setting. A passing local fixture does not establish a
