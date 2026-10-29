@@ -294,6 +294,8 @@ class _MoveTaskState:
     profile: str | None = None
     invocation_id: str | None = None
     owned: OwnedCheckout | None = None
+    # Review test budget, resolved once per transition (see ``_mt_review_test_timeout``).
+    review_test_timeout: int | None = None
     # --- phase A: resolved targets ---
     target_lane: Lane = Lane.PLANNED
     repo_root: Path = field(default_factory=Path)

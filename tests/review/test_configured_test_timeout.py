@@ -176,7 +176,7 @@ def test_transition_uses_planning_authority_not_execution_checkout(tmp_path: Pat
     (execution / ".kittify").mkdir()
     (execution / ".kittify/config.yaml").write_text("review:\n  test_timeout_seconds: 1\n  test_command: touch WRONG_AUTHORITY\n")
     monkeypatch.setattr(gates, "_mt_resolve_gate_baseline", lambda _st: None)
-    state = SimpleNamespace(force=False, old_lane=Lane.IN_PROGRESS, target_lane=Lane.FOR_REVIEW)
+    state = SimpleNamespace(force=False, old_lane=Lane.IN_PROGRESS, target_lane=Lane.FOR_REVIEW, owned=None, main_repo_root=authority)
     inputs = gates._TransitionGateInputs(execution, ("suite.py",), execution, authority)
     context = gates._mt_build_transition_gate_context(state, inputs)
     verdict = get_gate_handler("spec-kitty-pre-review").run(context)
