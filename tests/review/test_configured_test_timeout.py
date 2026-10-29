@@ -75,7 +75,7 @@ def test_configured_short_budget_actually_stops_head(tmp_path: Path) -> None:
     assert "after 1s" in verdict.reason
 
 
-@pytest.mark.parametrize("declaration", ["0", "-1", "true", "1.5", ".inf", "null", "'1200'", "86401", "999999999999999999999999"])
+@pytest.mark.parametrize("declaration", ["0", "-1", "true", "1.5", ".inf", "null", "'1200'", "86401", "999999999999999999999999", "[1200"])
 def test_invalid_declared_budget_refuses_before_command(tmp_path: Path, declaration: str) -> None:
     from specify_cli.review.test_timeout import InvalidReviewTestTimeout
 
