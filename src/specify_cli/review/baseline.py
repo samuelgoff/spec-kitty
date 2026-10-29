@@ -33,6 +33,7 @@ from specify_cli.consolidation.workspace import remove_scratch_worktree
 from specify_cli.configured_command import ConfiguredCommandUnsupported, run_configured_command_template
 from specify_cli.review.test_timeout import (
     DEFAULT_TEST_TIMEOUT_SECONDS,
+    InvalidReviewTestTimeout,
     resolve_review_test_timeout,
     validate_review_test_timeout,
 )
@@ -169,7 +170,10 @@ class BaselineTestResult:
             errors=(json.JSONDecodeError,),
             error_cls=ReviewBaselineReadError,
         )
-        return cls.from_dict(data)
+        try:
+            return cls.from_dict(data)
+        except InvalidReviewTestTimeout as exc:
+            raise ReviewBaselineReadError(path=str(path), reason=str(exc)) from exc
 
     def save(self, path: Path) -> None:
         """Write baseline result as JSON."""
@@ -306,6 +310,21 @@ def _baseline_worktree(repo_root: Path, base_branch: str) -> Iterator[Path | Non
                 logger.warning("Could not remove temporary worktree: %s", tmp_worktree)
 
 
+def _load_receipt_or_none_if_budget_corrupt(artifact_path: Path) -> BaselineTestResult | None:
+    """Load a saved receipt; one whose saved budget is invalid is no usable receipt.
+
+    Recapturing replaces it, so a corrupt budget cannot wedge every later
+    attempt. Any other malformed receipt still raises ``ReviewBaselineReadError``.
+    """
+    try:
+        return BaselineTestResult.load(artifact_path)
+    except ReviewBaselineReadError as exc:
+        if isinstance(exc.__cause__, InvalidReviewTestTimeout):
+            logger.warning("Ignoring baseline receipt with an invalid saved budget at %s; recapturing.", artifact_path)
+            return None
+        raise
+
+
 def capture_baseline(
     worktree_path: Path,
     base_branch: str,
@@ -358,7 +377,7 @@ def capture_baseline(
         return _make_sentinel(wp_id, base_branch, "")
 
     timeout = resolve_review_test_timeout(repo_root, timeout)
-    cached = BaselineTestResult.load(artifact_path)
+    cached = _load_receipt_or_none_if_budget_corrupt(artifact_path)
     if cached is not None and cached.test_timeout_seconds == timeout:
         logger.info("Baseline already captured for %s at the same budget — skipping re-capture.", wp_id)
         return cached

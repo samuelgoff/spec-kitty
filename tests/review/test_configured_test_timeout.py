@@ -100,7 +100,7 @@ def test_default_and_explicit_api_budget(tmp_path: Path) -> None:
     assert resolve_review_test_timeout(repo, 7) == 7
 
 
-def test_legacy_baseline_honors_configured_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_config_driven_capture_honors_configured_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from specify_cli.review import baseline as module
 
     repo = _repo(tmp_path, timeout=1200)
@@ -227,10 +227,10 @@ def test_stale_receipt_load_is_unverified_after_failed_recapture(tmp_path: Path,
 
 
 @pytest.mark.parametrize("budget", [True, False, 0, -1, 1.5, "1200", None, 86401])
-def test_malformed_receipt_budget_cannot_match_project_budget(tmp_path: Path, budget: object) -> None:
+def test_malformed_receipt_budget_is_recaptured_not_wedged(tmp_path: Path, budget: object) -> None:
     import json
 
-    from specify_cli.review.test_timeout import InvalidReviewTestTimeout
+    from specify_cli.review.baseline import BaselineTestResult, ReviewBaselineReadError
 
     repo = _repo(tmp_path, timeout=1)
     receipt = _capture(repo)
@@ -239,8 +239,29 @@ def test_malformed_receipt_budget_cannot_match_project_budget(tmp_path: Path, bu
     data["test_timeout_seconds"] = budget
     artifact = repo / "kitty-specs/budget/tasks/WP01/baseline-tests.json"
     artifact.write_text(json.dumps(data))
-    with pytest.raises(InvalidReviewTestTimeout):
-        _capture(repo)
+    with pytest.raises(ReviewBaselineReadError):  # the documented load contract
+        BaselineTestResult.load(artifact)
+    recaptured = _capture(repo)
+    assert recaptured is not None and recaptured.test_timeout_seconds == 1
+    assert BaselineTestResult.load(artifact) == recaptured
+
+
+@pytest.mark.parametrize(("configured", "reused"), [(300, True), (1200, False)])
+def test_receipt_without_budget_field_is_the_legacy_default(tmp_path: Path, configured: int, reused: bool) -> None:
+    import json
+
+    repo = _repo(tmp_path, timeout=300)
+    receipt = _capture(repo)
+    assert receipt is not None
+    artifact = repo / "kitty-specs/budget/tasks/WP01/baseline-tests.json"
+    data = receipt.to_dict()
+    del data["test_timeout_seconds"]  # a receipt saved before the budget was recorded
+    artifact.write_text(json.dumps(data))
+    config = repo / ".kittify/config.yaml"
+    config.write_text(config.read_text().replace("test_timeout_seconds: 300", f"test_timeout_seconds: {configured}"))
+    result = _capture(repo)
+    assert result is not None and result.test_timeout_seconds == configured
+    assert (json.loads(artifact.read_text()).get("test_timeout_seconds") is None) is reused
 
 
 @pytest.mark.parametrize("primary_budget", ["300", "true"])
